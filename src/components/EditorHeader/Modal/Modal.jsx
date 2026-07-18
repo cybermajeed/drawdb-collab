@@ -19,6 +19,7 @@ import {
 } from "../../../hooks";
 import { isRtl } from "../../../i18n/utils/rtl";
 import { importSQL } from "../../../utils/importSQL";
+import { normalizeSQLForParser } from "../../../utils/importSQL/normalize";
 import {
   getModalTitle,
   getModalWidth,
@@ -114,8 +115,12 @@ export default function Modal({
         ast = oracleParser.parse(importSource.src);
       } else {
         const parser = new Parser();
+        const normalizedSource = normalizeSQLForParser(
+          importSource.src,
+          targetDatabase,
+        );
 
-        ast = parser.astify(importSource.src, {
+        ast = parser.astify(normalizedSource, {
           database: targetDatabase,
         });
       }
