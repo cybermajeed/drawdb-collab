@@ -395,21 +395,9 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
               />
               <span className="capitalize">{connectionState}</span>
               {participants.length > 0 && (
-                <span className="flex items-center gap-1 text-zinc-600 dark:text-zinc-300">
-                  {participants.slice(0, 4).map((participant) => (
-                    <span
-                      key={participant.clientId}
-                      title={participant.displayName}
-                      className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-                      style={{ backgroundColor: participant.color }}
-                    >
-                      {participant.displayName.slice(0, 1).toUpperCase()}
-                    </span>
-                  ))}
-                  <span>
-                    {participants.length} participant
-                    {participants.length === 1 ? "" : "s"}
-                  </span>
+                <span className="text-zinc-600 dark:text-zinc-300">
+                  {participants.length} participant
+                  {participants.length === 1 ? "" : "s"}
                 </span>
               )}
             </div>
