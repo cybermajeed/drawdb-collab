@@ -222,6 +222,11 @@ export default function CollabContextProvider({ children }) {
     );
   }, []);
 
+  // Keep this callback stable. Collaboration cursor updates rebuild the context
+  // value frequently; an inline function here would invalidate diagram callbacks
+  // and cause the initial HTTP load effect to run again for every cursor event.
+  const emitDelta = useCallback(() => {}, []);
+
   useEffect(() => disconnect, [disconnect]);
 
   const value = useMemo(
@@ -234,7 +239,7 @@ export default function CollabContextProvider({ children }) {
       remoteCursors,
       identity: identityRef.current,
       versionRef,
-      emitDelta: () => {},
+      emitDelta,
       emitAwareness,
       isApplyingRemoteRef,
     }),
@@ -242,6 +247,7 @@ export default function CollabContextProvider({ children }) {
       connect,
       connectionState,
       disconnect,
+      emitDelta,
       emitAwareness,
       participants,
       remoteCursors,
