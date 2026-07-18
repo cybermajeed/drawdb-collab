@@ -9,7 +9,9 @@ const DEFAULT_DATABASE_PATH = path.resolve("data/drawdb.sqlite");
 export function openDatabase(databasePath = process.env.DATABASE_PATH) {
   const configuredPath = databasePath || DEFAULT_DATABASE_PATH;
   const resolvedPath =
-    configuredPath === ":memory:" ? configuredPath : path.resolve(configuredPath);
+    configuredPath === ":memory:"
+      ? configuredPath
+      : path.resolve(configuredPath);
   if (resolvedPath !== ":memory:") {
     fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
   }
@@ -98,7 +100,9 @@ export function createDiagramStore(db) {
     },
     updateSnapshot,
     delete(id) {
-      return db.prepare("DELETE FROM diagrams WHERE id = ?").run(id).changes > 0;
+      return (
+        db.prepare("DELETE FROM diagrams WHERE id = ?").run(id).changes > 0
+      );
     },
   };
 }

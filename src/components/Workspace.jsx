@@ -1,10 +1,4 @@
-import {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  createContext,
-} from "react";
+import { useState, useEffect, useCallback, useRef, createContext } from "react";
 import { v4 as uuidv4 } from "uuid";
 import ControlPanel from "./EditorHeader/ControlPanel";
 import { Slot } from "../context/ExtensionsContext";
@@ -118,16 +112,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
       ...(databases[database].hasEnums && { enums }),
       ...(databases[database].hasTypes && { types }),
     }),
-    [
-      database,
-      tables,
-      relationships,
-      notes,
-      areas,
-      transform,
-      enums,
-      types,
-    ],
+    [database, tables, relationships, notes, areas, transform, enums, types],
   );
 
   const applyDiagramState = useCallback(
@@ -428,13 +413,19 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
             )}
           </div>
           {Object.entries(remoteCursors).map(([clientId, cursor]) => {
-            const participant = participants.find((item) => item.clientId === clientId);
+            const participant = participants.find(
+              (item) => item.clientId === clientId,
+            );
             if (!participant || clientId === identity.clientId) return null;
             return (
               <div
                 key={clientId}
                 className="pointer-events-none fixed z-50"
-                style={{ left: cursor.x, top: cursor.y, color: participant.color }}
+                style={{
+                  left: cursor.x,
+                  top: cursor.y,
+                  color: participant.color,
+                }}
               >
                 <i className="bi bi-cursor-fill text-lg" />
                 <span

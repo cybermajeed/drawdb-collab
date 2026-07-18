@@ -20,25 +20,25 @@ export default function Editor() {
     <SettingsContextProvider>
       <CollabContextProvider>
         <LayoutContextProvider>
-        <TransformContextProvider>
-          <UndoRedoContextProvider>
-            <SelectContextProvider>
-              <AreasContextProvider>
-                <NotesContextProvider>
-                  <TypesContextProvider>
-                    <EnumsContextProvider>
-                      <TablesContextProvider>
-                        <SaveStateContextProvider>
-                          <WorkSpace />
-                        </SaveStateContextProvider>
-                      </TablesContextProvider>
-                    </EnumsContextProvider>
-                  </TypesContextProvider>
-                </NotesContextProvider>
-              </AreasContextProvider>
-            </SelectContextProvider>
-          </UndoRedoContextProvider>
-        </TransformContextProvider>
+          <TransformContextProvider>
+            <UndoRedoContextProvider>
+              <SelectContextProvider>
+                <AreasContextProvider>
+                  <NotesContextProvider>
+                    <TypesContextProvider>
+                      <EnumsContextProvider>
+                        <TablesContextProvider>
+                          <SaveStateContextProvider>
+                            <WorkSpace />
+                          </SaveStateContextProvider>
+                        </TablesContextProvider>
+                      </EnumsContextProvider>
+                    </TypesContextProvider>
+                  </NotesContextProvider>
+                </AreasContextProvider>
+              </SelectContextProvider>
+            </UndoRedoContextProvider>
+          </TransformContextProvider>
         </LayoutContextProvider>
       </CollabContextProvider>
     </SettingsContextProvider>

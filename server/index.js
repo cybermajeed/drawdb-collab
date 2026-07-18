@@ -39,7 +39,9 @@ export function createApplication({ databasePath, staticPath } = {}) {
   app.post("/api/diagrams", (req, res, next) => {
     try {
       if (!validPayload(req.body)) {
-        res.status(400).json({ error: "A valid name and document are required" });
+        res
+          .status(400)
+          .json({ error: "A valid name and document are required" });
         return;
       }
       const requestedId = req.body.id;
@@ -64,24 +66,34 @@ export function createApplication({ databasePath, staticPath } = {}) {
   });
   app.put("/api/diagrams/:id", validId, (req, res) => {
     if (!validPayload(req.body) || !Number.isInteger(req.body.baseVersion)) {
-      res.status(400).json({ error: "A valid name, document, and baseVersion are required" });
+      res
+        .status(400)
+        .json({
+          error: "A valid name, document, and baseVersion are required",
+        });
       return;
     }
     const result = store.updateSnapshot({ id: req.params.id, ...req.body });
-    if (result.status === "not_found") res.status(404).json({ error: "Diagram not found" });
+    if (result.status === "not_found")
+      res.status(404).json({ error: "Diagram not found" });
     else if (result.status === "conflict") {
-      res.status(409).json({ error: "Version conflict", diagram: result.diagram });
+      res
+        .status(409)
+        .json({ error: "Version conflict", diagram: result.diagram });
     } else res.json(result.diagram);
   });
   app.delete("/api/diagrams/:id", validId, (req, res) => {
-    if (!store.delete(req.params.id)) res.status(404).json({ error: "Diagram not found" });
+    if (!store.delete(req.params.id))
+      res.status(404).json({ error: "Diagram not found" });
     else res.status(204).end();
   });
 
   const assets = staticPath || path.resolve(__dirname, "../dist");
   if (fs.existsSync(assets)) {
     app.use(express.static(assets));
-    app.get("*splat", (_req, res) => res.sendFile(path.join(assets, "index.html")));
+    app.get("*splat", (_req, res) =>
+      res.sendFile(path.join(assets, "index.html")),
+    );
   }
   app.use((error, _req, res, next) => {
     void next;

@@ -42,6 +42,8 @@ DrawDB is a robust and user-friendly database entity relationship diagram (ERD) 
 git clone https://github.com/drawdb-io/drawdb
 cd drawdb
 npm install
+npm run dev:server
+# In another terminal:
 npm run dev
 ```
 
@@ -57,15 +59,40 @@ npm run build
 ### Docker Build
 
 ```bash
-docker build -t drawdb .
-docker run -p 3000:80 drawdb
+docker compose up --build
 ```
 
-If you want to enable sharing, set up the [server](https://github.com/drawdb-io/drawdb-server) and environment variables according to `.env.sample`. This is optional unless you need to share files.
+Open `http://localhost:3000`. The single application container serves the
+frontend, diagram API, WebSocket collaboration endpoint, and SQLite storage.
+The Compose configuration persists the database in the `drawdb-data` volume.
+
+### Collaborative self-hosting
+
+Diagrams are stored centrally in SQLite; IndexedDB is not used for diagram
+storage. `DATABASE_PATH` controls the database location and defaults to
+`./data/drawdb.sqlite` outside the container. Diagram URLs use
+`/diagrams/:diagramId`, and everyone opening the same URL joins the same live
+session automatically.
+
+The application exposes:
+
+- `GET|POST /api/diagrams`
+- `GET|PUT|DELETE /api/diagrams/:diagramId`
+- `/ws/diagrams/:diagramId` (WebSocket)
+
+Snapshot saves are debounced and guarded by an optimistic version. Stale
+clients receive the current snapshot instead of silently overwriting it.
+Reconnects send the last known version and converge on the server snapshot.
+
+When running behind a reverse proxy, forward `X-Forwarded-For` and
+`X-Forwarded-Proto`, and allow WebSocket `Upgrade`/`Connection` headers on the
+`/ws` path. The browser derives `ws://` or `wss://` from the current origin, so
+no public hostname or `localhost` value is required in production.
 
 ## Contributing
 
 Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to this project.
 
 ## Support
+
 - Join discussions: [Discord](https://discord.gg/BrjZgNrmR6)

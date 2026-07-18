@@ -5,7 +5,9 @@ async function request(url, options) {
   if (response.status === 204) return null;
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(body.error || `Request failed (${response.status})`);
+    const error = new Error(
+      body.error || `Request failed (${response.status})`,
+    );
     error.status = response.status;
     error.diagram = body.diagram;
     throw error;

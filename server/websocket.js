@@ -16,7 +16,10 @@ function send(socket, message) {
 }
 
 export function attachCollaborationServer(server, store) {
-  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: MAX_MESSAGE_BYTES,
+  });
   const rooms = new Map();
 
   const broadcast = (diagramId, message, except = null) => {
@@ -40,7 +43,11 @@ export function attachCollaborationServer(server, store) {
     const url = new URL(request.url, "http://localhost");
     const match = url.pathname.match(/^\/ws\/diagrams\/([^/]+)$/);
     const diagramId = match?.[1];
-    if (!diagramId || !DIAGRAM_ID_PATTERN.test(diagramId) || !store.get(diagramId)) {
+    if (
+      !diagramId ||
+      !DIAGRAM_ID_PATTERN.test(diagramId) ||
+      !store.get(diagramId)
+    ) {
       socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
       socket.destroy();
       return;
@@ -65,17 +72,26 @@ export function attachCollaborationServer(server, store) {
       try {
         message = JSON.parse(raw.toString());
       } catch {
-        send(socket, { type: MESSAGE_TYPES.ERROR, message: "Invalid JSON message" });
+        send(socket, {
+          type: MESSAGE_TYPES.ERROR,
+          message: "Invalid JSON message",
+        });
         return;
       }
       if (!isPlainObject(message) || message.diagramId !== diagramId) {
-        send(socket, { type: MESSAGE_TYPES.ERROR, message: "Invalid diagram message" });
+        send(socket, {
+          type: MESSAGE_TYPES.ERROR,
+          message: "Invalid diagram message",
+        });
         return;
       }
 
       if (message.type === MESSAGE_TYPES.JOIN) {
         if (!isValidParticipant(message.participant)) {
-          send(socket, { type: MESSAGE_TYPES.ERROR, message: "Invalid participant" });
+          send(socket, {
+            type: MESSAGE_TYPES.ERROR,
+            message: "Invalid participant",
+          });
           return;
         }
         socket.participant = message.participant;
@@ -93,7 +109,10 @@ export function attachCollaborationServer(server, store) {
       }
 
       if (!socket.participant) {
-        send(socket, { type: MESSAGE_TYPES.ERROR, message: "Join is required" });
+        send(socket, {
+          type: MESSAGE_TYPES.ERROR,
+          message: "Join is required",
+        });
         return;
       }
 
@@ -107,7 +126,10 @@ export function attachCollaborationServer(server, store) {
           message.operation.type === "snapshot.replace" &&
           isPlainObject(message.operation.payload?.document);
         if (!valid) {
-          send(socket, { type: MESSAGE_TYPES.ERROR, message: "Invalid operation" });
+          send(socket, {
+            type: MESSAGE_TYPES.ERROR,
+            message: "Invalid operation",
+          });
           return;
         }
         const result = store.updateSnapshot({
@@ -165,7 +187,10 @@ export function attachCollaborationServer(server, store) {
         send(socket, { type: MESSAGE_TYPES.PONG, diagramId });
         return;
       }
-      send(socket, { type: MESSAGE_TYPES.ERROR, message: "Unsupported message type" });
+      send(socket, {
+        type: MESSAGE_TYPES.ERROR,
+        message: "Unsupported message type",
+      });
     });
 
     socket.on("close", () => {

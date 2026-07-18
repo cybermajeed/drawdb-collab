@@ -7,10 +7,7 @@ import {
   useState,
 } from "react";
 import { nanoid } from "nanoid";
-import {
-  CONNECTION_STATE,
-  MESSAGE_TYPES,
-} from "../collaboration/protocol";
+import { CONNECTION_STATE, MESSAGE_TYPES } from "../collaboration/protocol";
 
 const COLORS = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c"];
 
@@ -29,7 +26,10 @@ function getIdentity() {
     displayName: `Guest ${suffix}`,
     color: COLORS[Math.floor(Math.random() * COLORS.length)],
   };
-  sessionStorage.setItem("drawdb-collaboration-identity", JSON.stringify(identity));
+  sessionStorage.setItem(
+    "drawdb-collaboration-identity",
+    JSON.stringify(identity),
+  );
   return identity;
 }
 
@@ -71,7 +71,8 @@ export default function CollabContextProvider({ children }) {
       versionRef.current = message.version;
       sessionRef.current?.onSnapshot?.(message);
       if (message.type === MESSAGE_TYPES.RESYNC_REQUIRED) {
-        for (const pending of pendingRef.current.values()) pending.reject(message);
+        for (const pending of pendingRef.current.values())
+          pending.reject(message);
         pendingRef.current.clear();
       }
       return;
@@ -97,7 +98,11 @@ export default function CollabContextProvider({ children }) {
     if (message.type === MESSAGE_TYPES.CURSOR) {
       setRemoteCursors((current) => ({
         ...current,
-        [message.clientId]: { x: message.x, y: message.y, selected: message.selected },
+        [message.clientId]: {
+          x: message.x,
+          y: message.y,
+          selected: message.selected,
+        },
       }));
     }
   }, []);
@@ -126,7 +131,10 @@ export default function CollabContextProvider({ children }) {
         if (socketRef.current !== socket) return;
         socketRef.current = null;
         setConnectionState(CONNECTION_STATE.CONNECTING);
-        const delay = Math.min(1000 * 2 ** reconnectAttemptsRef.current, 15_000);
+        const delay = Math.min(
+          1000 * 2 ** reconnectAttemptsRef.current,
+          15_000,
+        );
         reconnectAttemptsRef.current += 1;
         reconnectRef.current = window.setTimeout(
           () => openSocket(sessionRef.current),
@@ -170,7 +178,9 @@ export default function CollabContextProvider({ children }) {
     const socket = socketRef.current;
     const session = sessionRef.current;
     if (!session || socket?.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error("Collaboration connection is unavailable"));
+      return Promise.reject(
+        new Error("Collaboration connection is unavailable"),
+      );
     }
     const operationId = nanoid();
     return new Promise((resolve, reject) => {
@@ -228,7 +238,17 @@ export default function CollabContextProvider({ children }) {
       emitAwareness,
       isApplyingRemoteRef,
     }),
-    [connect, connectionState, disconnect, emitAwareness, participants, remoteCursors, sendSnapshot],
+    [
+      connect,
+      connectionState,
+      disconnect,
+      emitAwareness,
+      participants,
+      remoteCursors,
+      sendSnapshot,
+    ],
   );
-  return <CollabContext.Provider value={value}>{children}</CollabContext.Provider>;
+  return (
+    <CollabContext.Provider value={value}>{children}</CollabContext.Provider>
+  );
 }
