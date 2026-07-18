@@ -42,10 +42,12 @@ DrawDB is a robust and user-friendly database entity relationship diagram (ERD) 
 git clone https://github.com/drawdb-io/drawdb
 cd drawdb
 npm install
-npm run dev:server
-# In another terminal:
 npm run dev
 ```
+
+This starts both the Vite frontend on port `5173` and the API/WebSocket server
+on port `3000`. Use `npm run dev:client` or `npm run dev:server` when only one
+side is needed.
 
 ### Build
 
