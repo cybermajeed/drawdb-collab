@@ -1978,7 +1978,7 @@ export default function ControlPanel({
                 }}
                 onClick={!layout.readOnly && (() => setModal(MODAL.RENAME))}
               >
-                <span>{isTemplate ? "Templates" : "Diagrams"}</span>
+                <span>{isTemplate ? t("templates") : t("diagrams")}</span>
                 <span className="select-none text-zinc-400 dark:text-zinc-500 mx-1">
                   /
                 </span>

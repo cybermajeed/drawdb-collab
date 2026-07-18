@@ -393,11 +393,14 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
                       : "bg-red-500"
                 }`}
               />
-              <span className="capitalize">{connectionState}</span>
+              <span>
+                {t(`collaboration_${connectionState}`, connectionState)}
+              </span>
               {participants.length > 0 && (
                 <span className="text-zinc-600 dark:text-zinc-300">
-                  {participants.length} participant
-                  {participants.length === 1 ? "" : "s"}
+                  {t("collaboration_participants", {
+                    count: participants.length,
+                  })}
                 </span>
               )}
             </div>
