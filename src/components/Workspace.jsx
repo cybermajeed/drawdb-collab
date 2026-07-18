@@ -383,7 +383,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
           </CanvasContextProvider>
           <Slot name="canvas-overlay" />
           {isDiagram && loadedDiagramId && (
-            <div className="pointer-events-none absolute right-3 top-3 z-40 flex items-center gap-2 rounded-full border border-zinc-200 bg-white/90 px-3 py-1.5 text-xs shadow-sm dark:border-zinc-700 dark:bg-zinc-900/90">
+            <div className="pointer-events-none absolute right-3 top-3 z-40 flex items-center gap-2 rounded-full border border-zinc-200 bg-white/90 px-3 py-1.5 text-xs text-zinc-800 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-100">
               <span
                 className={`h-2 w-2 rounded-full ${
                   connectionState === "connected"
@@ -395,7 +395,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
               />
               <span className="capitalize">{connectionState}</span>
               {participants.length > 0 && (
-                <span className="flex items-center gap-1 text-zinc-500">
+                <span className="flex items-center gap-1 text-zinc-600 dark:text-zinc-300">
                   {participants.slice(0, 4).map((participant) => (
                     <span
                       key={participant.clientId}
