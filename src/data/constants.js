@@ -86,8 +86,7 @@ export const MODAL = {
   IMPORT_SRC: 8,
   TABLE_WIDTH: 9,
   LANGUAGE: 10,
-  SHARE: 11,
-  CONFIG_CUSTOM_TYPES: 12,
+  CONFIG_CUSTOM_TYPES: 11,
 };
 
 export const STATUS = {
@@ -100,7 +99,6 @@ export const STATUS = {
 export const SIDESHEET = {
   NONE: 0,
   TIMELINE: 1,
-  VERSIONS: 2,
 };
 
 export const DB = {
