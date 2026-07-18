@@ -382,36 +382,38 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
             <Canvas saveState={saveState} setSaveState={setSaveState} />
           </CanvasContextProvider>
           <Slot name="canvas-overlay" />
-          <div className="pointer-events-none absolute right-3 top-3 z-40 flex items-center gap-2 rounded-full border border-zinc-200 bg-white/90 px-3 py-1.5 text-xs shadow-sm dark:border-zinc-700 dark:bg-zinc-900/90">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                connectionState === "connected"
-                  ? "bg-emerald-500"
-                  : connectionState === "connecting"
-                    ? "bg-amber-500"
-                    : "bg-red-500"
-              }`}
-            />
-            <span className="capitalize">{connectionState}</span>
-            {participants.length > 0 && (
-              <span className="flex items-center gap-1 text-zinc-500">
-                {participants.slice(0, 4).map((participant) => (
-                  <span
-                    key={participant.clientId}
-                    title={participant.displayName}
-                    className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-                    style={{ backgroundColor: participant.color }}
-                  >
-                    {participant.displayName.slice(0, 1).toUpperCase()}
+          {isDiagram && loadedDiagramId && (
+            <div className="pointer-events-none absolute right-3 top-3 z-40 flex items-center gap-2 rounded-full border border-zinc-200 bg-white/90 px-3 py-1.5 text-xs shadow-sm dark:border-zinc-700 dark:bg-zinc-900/90">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  connectionState === "connected"
+                    ? "bg-emerald-500"
+                    : connectionState === "connecting"
+                      ? "bg-amber-500"
+                      : "bg-red-500"
+                }`}
+              />
+              <span className="capitalize">{connectionState}</span>
+              {participants.length > 0 && (
+                <span className="flex items-center gap-1 text-zinc-500">
+                  {participants.slice(0, 4).map((participant) => (
+                    <span
+                      key={participant.clientId}
+                      title={participant.displayName}
+                      className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                      style={{ backgroundColor: participant.color }}
+                    >
+                      {participant.displayName.slice(0, 1).toUpperCase()}
+                    </span>
+                  ))}
+                  <span>
+                    {participants.length} participant
+                    {participants.length === 1 ? "" : "s"}
                   </span>
-                ))}
-                <span>
-                  {participants.length} participant
-                  {participants.length === 1 ? "" : "s"}
                 </span>
-              </span>
-            )}
-          </div>
+              )}
+            </div>
+          )}
           {Object.entries(remoteCursors).map(([clientId, cursor]) => {
             const participant = participants.find(
               (item) => item.clientId === clientId,
