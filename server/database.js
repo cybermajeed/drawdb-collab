@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 
+/* global process */
+
 const DEFAULT_DATABASE_PATH = path.resolve("data/drawdb.sqlite");
 
 export function openDatabase(databasePath = process.env.DATABASE_PATH) {

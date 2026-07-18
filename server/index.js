@@ -8,6 +8,8 @@ import { createDiagramStore, openDatabase } from "./database.js";
 import { DIAGRAM_ID_PATTERN, isPlainObject } from "./protocol.js";
 import { attachCollaborationServer } from "./websocket.js";
 
+/* global process */
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MAX_DOCUMENT_BYTES = "2mb";
 
@@ -81,7 +83,8 @@ export function createApplication({ databasePath, staticPath } = {}) {
     app.use(express.static(assets));
     app.get("*splat", (_req, res) => res.sendFile(path.join(assets, "index.html")));
   }
-  app.use((error, _req, res, _next) => {
+  app.use((error, _req, res, next) => {
+    void next;
     console.error("Request failed:", error.message);
     if (error?.type === "entity.too.large") {
       res.status(413).json({ error: "Request body is too large" });

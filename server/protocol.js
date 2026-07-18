@@ -1,16 +1,4 @@
-export const MESSAGE_TYPES = Object.freeze({
-  JOIN: "join",
-  JOINED: "joined",
-  OPERATION: "operation",
-  OPERATION_APPLIED: "operation_applied",
-  SNAPSHOT: "snapshot",
-  RESYNC_REQUIRED: "resync_required",
-  PRESENCE: "presence",
-  CURSOR: "cursor",
-  ERROR: "error",
-  PING: "ping",
-  PONG: "pong",
-});
+export { MESSAGE_TYPES } from "../src/collaboration/protocol.js";
 
 export const DIAGRAM_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/;
 export const CLIENT_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/;

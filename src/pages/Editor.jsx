@@ -11,13 +11,15 @@ import SaveStateContextProvider from "../context/SaveStateContext";
 import EnumsContextProvider from "../context/EnumsContext";
 import WorkSpace from "../components/Workspace";
 import { useThemedPage } from "../hooks";
+import CollabContextProvider from "../context/CollabContext";
 
 export default function Editor() {
   useThemedPage();
 
   return (
     <SettingsContextProvider>
-      <LayoutContextProvider>
+      <CollabContextProvider>
+        <LayoutContextProvider>
         <TransformContextProvider>
           <UndoRedoContextProvider>
             <SelectContextProvider>
@@ -37,7 +39,8 @@ export default function Editor() {
             </SelectContextProvider>
           </UndoRedoContextProvider>
         </TransformContextProvider>
-      </LayoutContextProvider>
+        </LayoutContextProvider>
+      </CollabContextProvider>
     </SettingsContextProvider>
   );
 }

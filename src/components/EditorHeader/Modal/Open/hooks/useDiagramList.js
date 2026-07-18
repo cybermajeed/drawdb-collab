@@ -1,51 +1,50 @@
-import { useEffect, useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "../../../../../data/db";
-import { useExtensions } from "../../../../../context/ExtensionsContext";
+import { useCallback, useEffect, useState } from "react";
+import { diagramApi } from "../../../../../api/diagrams";
 
-const DISABLED = { loading: false, error: null, items: [] };
-
-function readError(err) {
-  return err?.response?.data?.error || err?.message || "Failed to load";
+function readError(error) {
+  return error?.message || "Failed to load diagrams";
 }
 
 export function useDiagramList() {
-  const extensions = useExtensions();
-  const cloudList = extensions?.cloudList;
-  const cloudEnabled = typeof cloudList === "function";
-  const currentUserId = extensions?.cloudCurrentUserId ?? null;
+  const [state, setState] = useState({ loading: true, error: null, items: [] });
 
-  const local = useLiveQuery(() => db.diagrams.toArray(), []);
-  const [cloud, setCloud] = useState(() =>
-    cloudEnabled ? { loading: true, error: null, items: null } : DISABLED,
-  );
-
-  useEffect(() => {
-    if (!cloudEnabled) {
-      setCloud(DISABLED);
-      return undefined;
-    }
+  const refresh = useCallback(() => {
     let cancelled = false;
-    setCloud({ loading: true, error: null, items: null });
-    cloudList()
+    setState((current) => ({ ...current, loading: true, error: null }));
+    diagramApi
+      .list()
       .then((items) => {
-        if (!cancelled) setCloud({ loading: false, error: null, items });
+        if (!cancelled) {
+          setState({
+            loading: false,
+            error: null,
+            items: items.map((item) => ({
+              ...item,
+              diagramId: item.id,
+              lastModified: item.updated_at,
+            })),
+          });
+        }
       })
-      .catch((err) => {
-        if (!cancelled)
-          setCloud({ loading: false, error: readError(err), items: null });
+      .catch((error) => {
+        if (!cancelled) {
+          setState({ loading: false, error: readError(error), items: [] });
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [cloudEnabled, cloudList]);
+  }, []);
+
+  useEffect(refresh, [refresh]);
 
   return {
-    loading: cloud.loading || local === undefined,
-    error: cloud.error,
-    cloud: cloud.items ?? [],
-    local: local ?? [],
-    cloudEnabled,
-    currentUserId,
+    loading: state.loading,
+    error: state.error,
+    cloud: [],
+    local: state.items,
+    cloudEnabled: false,
+    currentUserId: null,
+    refresh,
   };
 }

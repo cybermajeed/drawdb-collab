@@ -1,6 +1,6 @@
 import { useContext, useEffect, useMemo, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
-import { Slot, useExtensions } from "../../context/ExtensionsContext";
+import { Slot } from "../../context/ExtensionsContext";
 import { createPortal } from "react-dom";
 import {
   IconCaretdown,
@@ -10,12 +10,10 @@ import {
   IconUndo,
   IconRedo,
   IconEdit,
-  IconShareStroked,
 } from "@douyinfe/semi-icons";
 import { Link, useMatch, useParams } from "react-router-dom";
 import icon from "../../assets/icon_dark_64.png";
 import {
-  Button,
   Divider,
   Dropdown,
   InputNumber,
@@ -83,6 +81,7 @@ import { IdContext } from "../Workspace";
 import { socials } from "../../data/socials";
 import { toDBML } from "../../utils/exportAs/dbml";
 import { exportSavedData } from "../../utils/exportSavedData";
+import { diagramApi } from "../../api/diagrams";
 import { nanoid } from "nanoid";
 import { getTableHeight } from "../../utils/utils";
 import { deleteFromCache, STORAGE_KEY } from "../../utils/cache";
@@ -95,7 +94,6 @@ export default function ControlPanel({
   title,
   setTitle,
   lastSaved,
-  setLastSaved,
   toolbarContainer,
 }) {
   const { id: diagramId } = useParams();
@@ -147,7 +145,6 @@ export default function ControlPanel({
   const { version, gistId, setGistId } = useContext(IdContext);
   const isTemplate = useMatch("/editor/templates/:id");
   const navigate = useNavigateWithParams();
-  const extensions = useExtensions();
 
   const undo = () => {
     if (undoStack.length === 0) return;
@@ -828,44 +825,6 @@ export default function ControlPanel({
     setLayout((prev) => ({ ...prev, dbmlEditor: !prev.dbmlEditor }));
   };
   const save = async () => {
-    if (typeof extensions.cloudSave === "function") {
-      // TODO: dont have blank here have null
-      const isNew = diagramId === 'blank';
-      const newId = isNew ? uuidv4() : diagramId;
-      const diagramData = {
-        diagramId: newId,
-        database,
-        name: title,
-        gistId: gistId ?? "",
-        lastModified: new Date(),
-        tables,
-        references: relationships,
-        notes,
-        areas,
-        pan: transform.pan,
-        zoom: transform.zoom,
-        ...(databases[database].hasEnums && { enums }),
-        ...(databases[database].hasTypes && { types }),
-      };
-      try {
-        await extensions.cloudSave(diagramData, { isNew });
-        if (isNew) {
-          navigate(`/editor/diagrams/${newId}`, { replace: true });
-        }
-        setSaveState(State.SAVED);
-        if (typeof setLastSaved === "function") {
-          setLastSaved(new Date().toLocaleString());
-        }
-      } catch (err) {
-        if (err?.response?.status === 402) {
-          setSaveState(State.NONE);
-          navigate("/checkout?tier=solo_pro");
-          return;
-        }
-        setSaveState(State.ERROR);
-      }
-      return;
-    }
     setSaveState(State.SAVING);
   };
   const { cloud, local } = useDiagramList();
@@ -907,28 +866,14 @@ export default function ControlPanel({
       ...(databases[database].hasTypes && { types }),
     };
 
-    if (typeof extensions.cloudSave === "function") {
-      try {
-        await extensions.cloudSave(diagramData, { isNew: true });
-      } catch (err) {
-        if (err?.response?.status === 402) {
-          setSaveState(State.NONE);
-          navigate("/checkout?tier=solo_pro");
-          return;
-        }
-        setSaveState(State.ERROR);
-        Toast.error(t("oops_smth_went_wrong"));
-        return;
-      }
-    } else {
-      try {
-        await db.diagrams.add(diagramData);
-      } catch (err) {
-        console.error(err);
-        setSaveState(State.ERROR);
-        Toast.error(t("oops_smth_went_wrong"));
-        return;
-      }
+    try {
+      const { name, diagramId: id, ...document } = diagramData;
+      await diagramApi.create({ id, name, document });
+    } catch (err) {
+      console.error(err);
+      setSaveState(State.ERROR);
+      Toast.error(t("oops_smth_went_wrong"));
+      return;
     }
 
     let toastId;
@@ -939,7 +884,7 @@ export default function ControlPanel({
           {t("saved_as_copy")}{" "}
           <Typography.Text
             link={{
-              href: `/editor/diagrams/${newId}${window.location.search}`,
+              href: `/diagrams/${newId}${window.location.search}`,
               target: "_blank",
               rel: "noopener noreferrer",
             }}
@@ -1044,14 +989,7 @@ export default function ControlPanel({
         },
         function: async () => {
           try {
-            if (typeof extensions.cloudDelete === "function") {
-              await extensions.cloudDelete(diagramId);
-            } else {
-              await db.diagrams
-                .where("diagramId")
-                .equals(diagramId)
-                .delete();
-            }
+            await diagramApi.delete(diagramId);
             setTitle("Untitled diagram");
             setTables([]);
             setRelationships([]);
@@ -1786,17 +1724,6 @@ export default function ControlPanel({
             {header()}
             <div className="flex items-center gap-2 me-7">
               <Slot name="header-actions-start" />
-              {!isTemplate && (
-                <Button
-                  type="primary"
-                  className="!text-base !pe-6 !ps-5 !py-[18px] !rounded-md"
-                  size="default"
-                  icon={<IconShareStroked />}
-                  onClick={() => setModal(MODAL.SHARE)}
-                >
-                  {t("share")}
-                </Button>
-              )}
               <Slot name="header-actions-end" />
             </div>
           </div>
@@ -1966,15 +1893,6 @@ export default function ControlPanel({
               disabled={layout.readOnly}
             >
               <IconSaveStroked size="extra-large" />
-            </button>
-          </Tooltip>
-          <Divider layout="vertical" margin="8px" />
-          <Tooltip content={t("versions")} position="bottom">
-            <button
-              className="py-1 px-2 hover-2 rounded-sm text-xl -mt-0.5"
-              onClick={() => setSidesheet(SIDESHEET.VERSIONS)}
-            >
-              <i className="fa-solid fa-code-branch" />
             </button>
           </Tooltip>
           <Divider layout="vertical" margin="8px" />
