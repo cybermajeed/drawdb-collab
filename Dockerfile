@@ -16,7 +16,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/server ./server
 COPY --from=build /app/src/collaboration ./src/collaboration
-RUN mkdir -p /data && chown -R node:node /app /data
+RUN install -d -o node -g node /data
 USER node
 VOLUME ["/data"]
 EXPOSE 3000
