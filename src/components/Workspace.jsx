@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import ControlPanel from "./EditorHeader/ControlPanel";
 import { Slot } from "../context/ExtensionsContext";
 import Canvas from "./EditorCanvas/Canvas";
+import CollaborationCursors from "./CollaborationCursors";
 import { CanvasContextProvider } from "../context/CanvasContext";
 import SidePanel from "./EditorSidePanel/SidePanel";
 import { DB, State } from "../data/constants";
@@ -78,10 +79,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
     sendSnapshot,
     connectionState,
     participants,
-    remoteCursors,
-    identity,
     versionRef,
-    emitAwareness,
   } = useCollab();
   const { t, i18n } = useTranslation();
   const { id: routeDiagramId } = useParams();
@@ -385,7 +383,6 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
         onPointerMove={(e) => {
           if (!e.isPrimary) return;
           handleResize(e);
-          emitAwareness({ x: e.clientX, y: e.clientY });
         }}
         onPointerDown={(e) => {
           // Required for onPointerLeave to trigger when a touch pointer leaves
@@ -400,6 +397,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
         <div className="relative flex-1 min-w-0 h-full overflow-hidden">
           <CanvasContextProvider className="h-full w-full">
             <Canvas saveState={saveState} setSaveState={setSaveState} />
+            <CollaborationCursors />
           </CanvasContextProvider>
           <Slot name="canvas-overlay" />
           {isDiagram && loadedDiagramId && (
@@ -425,31 +423,6 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
               )}
             </div>
           )}
-          {Object.entries(remoteCursors).map(([clientId, cursor]) => {
-            const participant = participants.find(
-              (item) => item.clientId === clientId,
-            );
-            if (!participant || clientId === identity.clientId) return null;
-            return (
-              <div
-                key={clientId}
-                className="pointer-events-none fixed z-50"
-                style={{
-                  left: cursor.x,
-                  top: cursor.y,
-                  color: participant.color,
-                }}
-              >
-                <i className="bi bi-cursor-fill text-lg" />
-                <span
-                  className="ml-1 rounded px-1.5 py-0.5 text-xs text-white"
-                  style={{ backgroundColor: participant.color }}
-                >
-                  {participant.displayName}
-                </span>
-              </div>
-            );
-          })}
           {layout.toolbar && (
             <div
               ref={setToolbarContainer}
