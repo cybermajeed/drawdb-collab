@@ -3,6 +3,7 @@ export const MESSAGE_TYPES = Object.freeze({
   JOINED: "joined",
   OPERATION: "operation",
   OPERATION_APPLIED: "operation_applied",
+  OPERATION_PREVIEW: "operation_preview",
   SNAPSHOT: "snapshot",
   RESYNC_REQUIRED: "resync_required",
   PRESENCE: "presence",

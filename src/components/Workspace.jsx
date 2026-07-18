@@ -116,7 +116,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
   );
 
   const applyDiagramState = useCallback(
-    (serverDiagram) => {
+    (serverDiagram, { remote = false } = {}) => {
       const diagram = serverDiagram.document ?? serverDiagram;
       applyingRemoteRef.current = true;
       versionRef.current = serverDiagram.version ?? versionRef.current;
@@ -126,14 +126,18 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
       setRelationships(diagram.references ?? diagram.relationships ?? []);
       setAreas(diagram.areas ?? diagram.subjectAreas ?? []);
       setNotes(diagram.notes ?? []);
-      setTransform({
-        pan: diagram.pan ?? { x: 0, y: 0 },
-        zoom: diagram.zoom ?? 1,
-      });
+      if (!remote) {
+        setTransform({
+          pan: diagram.pan ?? { x: 0, y: 0 },
+          zoom: diagram.zoom ?? 1,
+        });
+      }
       setTypes(diagram.types ?? []);
       setEnums(diagram.enums ?? []);
-      setUndoStack([]);
-      setRedoStack([]);
+      if (!remote) {
+        setUndoStack([]);
+        setRedoStack([]);
+      }
     },
     [
       setAreas,
@@ -178,7 +182,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
       setSaveState(State.SAVED);
       setLastSaved(new Date().toLocaleString());
     } catch (error) {
-      if (error.diagram) applyDiagramState(error.diagram);
+      if (error.diagram) applyDiagramState(error.diagram, { remote: true });
       console.warn("server autosave failed:", error);
       setSaveState(State.ERROR);
     }
@@ -224,9 +228,18 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
           diagramId: id,
           version: diagram.version,
           onSnapshot: (snapshot) => {
-            applyDiagramState(snapshot);
+            applyDiagramState(snapshot, { remote: true });
             setSaveState(State.SAVED);
             setLastSaved(new Date().toLocaleString());
+          },
+          onDelta: (operation) => {
+            if (operation?.type !== "table.move") return;
+            const { id: tableId, x, y } = operation.payload;
+            setTables((current) =>
+              current.map((table) =>
+                table.id === tableId ? { ...table, x, y } : table,
+              ),
+            );
           },
         });
       } catch (error) {
@@ -332,6 +345,13 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
     gistId,
     setSaveState,
   ]);
+
+  useEffect(() => {
+    // A remote snapshot may only change values that are intentionally absent
+    // from the autosave dependency list. Do not let its suppression flag leak
+    // into the user's next local edit in that case.
+    applyingRemoteRef.current = false;
+  });
 
   useEffect(() => {
     if (layout.readOnly) return;

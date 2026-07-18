@@ -3,6 +3,7 @@ import {
   CLIENT_ID_PATTERN,
   DIAGRAM_ID_PATTERN,
   isPlainObject,
+  isValidOperationPreview,
   isValidParticipant,
   MESSAGE_TYPES,
 } from "./protocol.js";
@@ -162,6 +163,27 @@ export function attachCollaborationServer(server, store) {
           },
         };
         broadcast(diagramId, applied);
+        return;
+      }
+
+      if (message.type === MESSAGE_TYPES.OPERATION_PREVIEW) {
+        if (!isValidOperationPreview(message.operation)) {
+          send(socket, {
+            type: MESSAGE_TYPES.ERROR,
+            message: "Invalid operation preview",
+          });
+          return;
+        }
+        broadcast(
+          diagramId,
+          {
+            type: MESSAGE_TYPES.OPERATION_PREVIEW,
+            diagramId,
+            clientId: socket.participant.clientId,
+            operation: message.operation,
+          },
+          socket,
+        );
         return;
       }
 

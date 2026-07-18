@@ -45,6 +45,7 @@ export default function CollabContextProvider({ children }) {
   const versionRef = useRef(0);
   const isApplyingRemoteRef = useRef(false);
   const cursorSentAtRef = useRef(0);
+  const previewThrottleRef = useRef(new Map());
   const [connectionState, setConnectionState] = useState(
     CONNECTION_STATE.DISCONNECTED,
   );
@@ -93,6 +94,13 @@ export default function CollabContextProvider({ children }) {
     }
     if (message.type === MESSAGE_TYPES.PRESENCE) {
       setParticipants(message.participants || []);
+      return;
+    }
+    if (
+      message.type === MESSAGE_TYPES.OPERATION_PREVIEW &&
+      message.clientId !== identityRef.current.clientId
+    ) {
+      sessionRef.current?.onDelta?.(message.operation);
       return;
     }
     if (message.type === MESSAGE_TYPES.CURSOR) {
@@ -147,15 +155,16 @@ export default function CollabContextProvider({ children }) {
   );
 
   const connect = useCallback(
-    ({ diagramId, version, onSnapshot }) => {
+    ({ diagramId, version, onSnapshot, onDelta }) => {
       if (sessionRef.current?.diagramId === diagramId) {
         sessionRef.current.onSnapshot = onSnapshot;
+        sessionRef.current.onDelta = onDelta;
         versionRef.current = version;
         return;
       }
       window.clearTimeout(reconnectRef.current);
       socketRef.current?.close();
-      sessionRef.current = { diagramId, onSnapshot };
+      sessionRef.current = { diagramId, onSnapshot, onDelta };
       versionRef.current = version;
       setRemoteCursors({});
       openSocket(sessionRef.current);
@@ -172,6 +181,10 @@ export default function CollabContextProvider({ children }) {
     setConnectionState(CONNECTION_STATE.DISCONNECTED);
     setParticipants([]);
     setRemoteCursors({});
+    for (const preview of previewThrottleRef.current.values()) {
+      window.clearTimeout(preview.timer);
+    }
+    previewThrottleRef.current.clear();
   }, []);
 
   const sendSnapshot = useCallback((name, document) => {
@@ -222,10 +235,52 @@ export default function CollabContextProvider({ children }) {
     );
   }, []);
 
-  // Keep this callback stable. Collaboration cursor updates rebuild the context
-  // value frequently; an inline function here would invalidate diagram callbacks
-  // and cause the initial HTTP load effect to run again for every cursor event.
-  const emitDelta = useCallback(() => {}, []);
+  const emitDelta = useCallback((delta) => {
+    if (
+      delta?.target !== "table" ||
+      delta.action !== "update" ||
+      delta.data?.length !== 2
+    ) {
+      return;
+    }
+    const [id, values] = delta.data;
+    if (!Number.isFinite(values?.x) || !Number.isFinite(values?.y)) return;
+
+    const sendPreview = (payload) => {
+      const socket = socketRef.current;
+      const session = sessionRef.current;
+      if (!session || socket?.readyState !== WebSocket.OPEN) return;
+      socket.send(
+        JSON.stringify({
+          type: MESSAGE_TYPES.OPERATION_PREVIEW,
+          diagramId: session.diagramId,
+          operation: { type: "table.move", payload },
+        }),
+      );
+    };
+
+    const now = Date.now();
+    const current = previewThrottleRef.current.get(id) ?? {
+      lastSent: 0,
+      timer: null,
+      payload: null,
+    };
+    current.payload = { id, x: values.x, y: values.y };
+    const remaining = 50 - (now - current.lastSent);
+    if (remaining <= 0) {
+      window.clearTimeout(current.timer);
+      current.timer = null;
+      current.lastSent = now;
+      sendPreview(current.payload);
+    } else if (current.timer === null) {
+      current.timer = window.setTimeout(() => {
+        current.timer = null;
+        current.lastSent = Date.now();
+        sendPreview(current.payload);
+      }, remaining);
+    }
+    previewThrottleRef.current.set(id, current);
+  }, []);
 
   useEffect(() => disconnect, [disconnect]);
 

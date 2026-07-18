@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createDiagramStore, openDatabase } from "./database.js";
+import { isValidOperationPreview } from "./protocol.js";
 
 test("diagram persistence enforces optimistic versions and operation IDs", () => {
   const database = openDatabase(":memory:");
@@ -43,4 +44,28 @@ test("diagram persistence enforces optimistic versions and operation IDs", () =>
   assert.equal(conflict.status, "conflict");
   assert.equal(conflict.diagram.version, 2);
   database.close();
+});
+
+test("validates ephemeral table movement previews", () => {
+  assert.equal(
+    isValidOperationPreview({
+      type: "table.move",
+      payload: { id: "table-1", x: 120.5, y: -40 },
+    }),
+    true,
+  );
+  assert.equal(
+    isValidOperationPreview({
+      type: "table.move",
+      payload: { id: "../table", x: 1, y: 2 },
+    }),
+    false,
+  );
+  assert.equal(
+    isValidOperationPreview({
+      type: "table.move",
+      payload: { id: "table-1", x: Number.NaN, y: 2 },
+    }),
+    false,
+  );
 });

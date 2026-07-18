@@ -18,3 +18,15 @@ export function isValidParticipant(participant) {
     participant.color.length <= 32
   );
 }
+
+export function isValidOperationPreview(operation) {
+  if (!isPlainObject(operation) || operation.type !== "table.move")
+    return false;
+  const { payload } = operation;
+  return (
+    isPlainObject(payload) &&
+    CLIENT_ID_PATTERN.test(payload.id || "") &&
+    Number.isFinite(payload.x) &&
+    Number.isFinite(payload.y)
+  );
+}
