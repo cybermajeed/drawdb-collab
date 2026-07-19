@@ -16,7 +16,8 @@ export default function DiagramContextProvider({ children }) {
   const { transform } = useTransform();
   const { setUndoStack, setRedoStack } = useUndoRedo();
   const { selectedElement, setSelectedElement } = useSelect();
-  const { emitDelta, isApplyingRemoteRef } = useCollab();
+  const { emitDelta, isApplyingRemoteRef, isTableLockedByOther, tableLocks } =
+    useCollab();
 
   const shouldEmit = () => !isApplyingRemoteRef?.current;
 
@@ -97,6 +98,14 @@ export default function DiagramContextProvider({ children }) {
   };
 
   const deleteTable = (id, addToHistory = true) => {
+    if (shouldEmit() && isTableLockedByOther(id)) {
+      Toast.warning(
+        t("collaboration_table_lock_denied", {
+          name: tableLocks[id]?.displayName ?? t("collaboration_participant"),
+        }),
+      );
+      return;
+    }
     if (addToHistory) {
       const rels = relationships.reduce((acc, r) => {
         if (r.startTableId === id || r.endTableId === id) {
@@ -145,6 +154,7 @@ export default function DiagramContextProvider({ children }) {
   };
 
   const updateTable = (id, updatedValues) => {
+    if (shouldEmit() && isTableLockedByOther(id)) return;
     setTables((prev) =>
       prev.map((t) => (t.id === id ? { ...t, ...updatedValues } : t)),
     );
@@ -159,6 +169,7 @@ export default function DiagramContextProvider({ children }) {
   };
 
   const updateField = (tid, fid, updatedValues) => {
+    if (shouldEmit() && isTableLockedByOther(tid)) return;
     setTables((prev) =>
       prev.map((table) => {
         if (tid === table.id) {
@@ -183,6 +194,14 @@ export default function DiagramContextProvider({ children }) {
   };
 
   const deleteField = (field, tid, addToHistory = true) => {
+    if (shouldEmit() && isTableLockedByOther(tid)) {
+      Toast.warning(
+        t("collaboration_table_lock_denied", {
+          name: tableLocks[tid]?.displayName ?? t("collaboration_participant"),
+        }),
+      );
+      return;
+    }
     const { fields, name } = tables.find((t) => t.id === tid);
     const referencesField = (r) =>
       getRelationshipFields(r).some(

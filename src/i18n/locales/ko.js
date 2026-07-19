@@ -326,6 +326,11 @@ const ko = {
     collaboration_participants: "참여자 {{count}}명",
     collaboration_participants_one: "참여자 {{count}}명",
     collaboration_participants_other: "참여자 {{count}}명",
+    collaboration_participant: "다른 참여자",
+    collaboration_table_lock_denied: "{{name}}님이 이 테이블을 편집 중입니다",
+    collaboration_table_lock_unavailable:
+      "이 테이블의 편집 권한을 가져오지 못했습니다",
+    collaboration_table_lock_pending: "편집 권한을 요청하는 중...",
     all_databases: "모든 데이터베이스",
     all_types: "모든 유형",
     cloud: "클라우드",

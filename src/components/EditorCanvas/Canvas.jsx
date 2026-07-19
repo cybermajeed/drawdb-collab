@@ -77,9 +77,17 @@ export default function Canvas() {
     endX: 0,
     endY: 0,
   });
-  const { emitAwareness } = useCollab();
+  const {
+    acquireTableLocks,
+    emitAwareness,
+    isTableLockedByOther,
+    releaseTableLocks,
+    tableLocks,
+  } = useCollab();
   const lastLinkingRef = useRef(false);
   const rightClickPanned = useRef(false);
+  const pointerDownActiveRef = useRef(false);
+  const dragLockIdsRef = useRef([]);
 
   useEffect(() => {
     if (linking) {
@@ -443,7 +451,7 @@ export default function Canvas() {
   /**
    * @param {PointerEvent} e
    */
-  const handlePointerDown = (e) => {
+  const handlePointerDown = async (e) => {
     if (!e.isPrimary) return;
 
     // don't pan if the sidesheet for editing a table is open
@@ -453,12 +461,14 @@ export default function Canvas() {
       !layout.sidebar
     )
       return;
+    pointerDownActiveRef.current = true;
 
     const isMouseLeftButton = e.button === 0;
     const isMouseMiddleButton = e.button === 1;
     const isMouseRightButton = e.button === 2;
 
     if (isMouseLeftButton) {
+      const pointerDownElement = elementPointerDown;
       setBulkSelectRect({
         x1: pointer.spaces.diagram.x,
         y1: pointer.spaces.diagram.y,
@@ -468,8 +478,46 @@ export default function Canvas() {
         ctrlKey: e.ctrlKey,
         metaKey: e.metaKey,
       });
-      if (elementPointerDown !== null) {
-        handlePointerDownOnElement(e, elementPointerDown);
+      if (pointerDownElement !== null) {
+        if (
+          pointerDownElement.type === ObjectType.TABLE &&
+          !pointerDownElement.element.locked
+        ) {
+          const clickedTableId = pointerDownElement.element.id;
+          if (isTableLockedByOther(clickedTableId)) {
+            const lock = tableLocks[clickedTableId];
+            Toast.warning(
+              t("collaboration_table_lock_denied", {
+                name: lock?.displayName ?? t("collaboration_participant"),
+              }),
+            );
+            handlePointerDownOnElement(e, {
+              ...pointerDownElement,
+              element: { ...pointerDownElement.element, locked: true },
+            });
+            return;
+          }
+
+          const clickedTableIsSelected = bulkSelectedElements.some(
+            (item) =>
+              item.type === ObjectType.TABLE && item.id === clickedTableId,
+          );
+          const tableIds = clickedTableIsSelected
+            ? bulkSelectedElements
+                .filter((item) => item.type === ObjectType.TABLE)
+                .map((item) => item.id)
+            : [clickedTableId];
+          if (!(await acquireTableLocks(tableIds))) {
+            Toast.warning(t("collaboration_table_lock_unavailable"));
+            return;
+          }
+          if (!pointerDownActiveRef.current) {
+            releaseTableLocks(tableIds);
+            return;
+          }
+          dragLockIdsRef.current = tableIds;
+        }
+        handlePointerDownOnElement(e, pointerDownElement);
       }
       pointer.setStyle("crosshair");
     } else if (isMouseMiddleButton || isMouseRightButton) {
@@ -517,9 +565,9 @@ export default function Canvas() {
    * @param {PointerEvent} e
    */
   const handlePointerUp = (e) => {
-    if (selectedElement.open && !layout.sidebar) return;
-
     if (!e.isPrimary) return;
+    pointerDownActiveRef.current = false;
+    if (selectedElement.open && !layout.sidebar) return;
 
     if (didDrag()) {
       setUndoStack((prev) => [
@@ -557,6 +605,11 @@ export default function Canvas() {
       }
     }
     setDragging(notDragging);
+    if (dragLockIdsRef.current.length > 0) {
+      const tableIds = dragLockIdsRef.current;
+      dragLockIdsRef.current = [];
+      window.setTimeout(() => releaseTableLocks(tableIds), 2_000);
+    }
 
     if (panning.isPanning && didPan()) {
       setSaveState(State.SAVING);

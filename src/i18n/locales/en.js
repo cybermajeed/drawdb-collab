@@ -313,6 +313,11 @@ const en = {
     collaboration_participants: "{{count}} participants",
     collaboration_participants_one: "{{count}} participant",
     collaboration_participants_other: "{{count}} participants",
+    collaboration_participant: "Another participant",
+    collaboration_table_lock_denied: "{{name}} is editing this table",
+    collaboration_table_lock_unavailable:
+      "This table could not be locked for editing",
+    collaboration_table_lock_pending: "Requesting edit access...",
     all_databases: "All databases",
     all_types: "All types",
     cloud: "Cloud",

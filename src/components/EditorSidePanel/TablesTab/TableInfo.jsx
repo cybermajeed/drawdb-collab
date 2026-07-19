@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Collapse,
   Input,
@@ -15,6 +15,7 @@ import {
   useLayout,
   useSaveState,
   useUndoRedo,
+  useCollab,
 } from "../../../hooks";
 import { Action, ObjectType, State, DB } from "../../../data/constants";
 import TableField from "./TableField";
@@ -37,6 +38,50 @@ export default function TableInfo({ data }) {
   const { setSaveState } = useSaveState();
   const [editField, setEditField] = useState({});
   const initialColorRef = useRef(data.color);
+  const editorRef = useRef(null);
+  const {
+    acquireTableLock,
+    connectionState,
+    hasTableLock,
+    releaseTableLockRetention,
+    releaseTableLocks,
+    retainTableLock,
+    tableLocks,
+  } = useCollab();
+  const collaborationEnabled = connectionState === "connected";
+  const currentLock = tableLocks[data.id];
+  const canEdit = !collaborationEnabled || hasTableLock(data.id);
+
+  useEffect(() => {
+    if (!collaborationEnabled) {
+      return undefined;
+    }
+    let active = true;
+    retainTableLock(data.id);
+    acquireTableLock(data.id).then((granted) => {
+      if (!active && granted) {
+        releaseTableLockRetention(data.id);
+        releaseTableLocks([data.id]);
+      }
+    });
+    return () => {
+      active = false;
+      releaseTableLockRetention(data.id);
+      releaseTableLocks([data.id]);
+    };
+  }, [
+    acquireTableLock,
+    collaborationEnabled,
+    data.id,
+    releaseTableLockRetention,
+    releaseTableLocks,
+    retainTableLock,
+  ]);
+
+  useEffect(() => {
+    if (canEdit || !editorRef.current?.contains(document.activeElement)) return;
+    document.activeElement.blur();
+  }, [canEdit]);
 
   const handleColorPick = (color) => {
     setUndoStack((prev) => {
@@ -148,7 +193,16 @@ export default function TableInfo({ data }) {
   };
 
   return (
-    <div>
+    <div ref={editorRef} className="relative">
+      {collaborationEnabled && !canEdit && (
+        <div className="absolute inset-0 z-50 flex items-start justify-center rounded-md bg-white/65 pt-6 text-sm font-medium text-zinc-800 backdrop-blur-[1px] dark:bg-zinc-950/65 dark:text-zinc-100">
+          {currentLock
+            ? t("collaboration_table_lock_denied", {
+                name: currentLock.displayName,
+              })
+            : t("collaboration_table_lock_pending")}
+        </div>
+      )}
       <div className="flex items-center mb-2.5">
         <div className="text-md font-semibold break-keep">{t("name")}:</div>
         <Input
@@ -318,34 +372,34 @@ export default function TableInfo({ data }) {
             <Collapse.Panel header={t("comment")} itemKey="1">
               <TextArea
                 field="comment"
-              value={data.comment}
-              readonly={layout.readOnly}
-              autosize
-              placeholder={t("comment")}
-              rows={1}
-              onChange={(value) =>
-                updateTable(data.id, { comment: value }, false)
-              }
-              onFocus={(e) => setEditField({ comment: e.target.value })}
-              onBlur={(e) => {
-                if (e.target.value === editField.comment) return;
-                setUndoStack((prev) => [
-                  ...prev,
-                  {
-                    action: Action.EDIT,
-                    element: ObjectType.TABLE,
-                    component: "self",
-                    tid: data.id,
-                    undo: editField,
-                    redo: { comment: e.target.value },
-                    message: t("edit_table", {
-                      tableName: e.target.value,
-                      extra: "[comment]",
-                    }),
-                  },
-                ]);
-                setRedoStack([]);
-              }}
+                value={data.comment}
+                readonly={layout.readOnly}
+                autosize
+                placeholder={t("comment")}
+                rows={1}
+                onChange={(value) =>
+                  updateTable(data.id, { comment: value }, false)
+                }
+                onFocus={(e) => setEditField({ comment: e.target.value })}
+                onBlur={(e) => {
+                  if (e.target.value === editField.comment) return;
+                  setUndoStack((prev) => [
+                    ...prev,
+                    {
+                      action: Action.EDIT,
+                      element: ObjectType.TABLE,
+                      component: "self",
+                      tid: data.id,
+                      undo: editField,
+                      redo: { comment: e.target.value },
+                      message: t("edit_table", {
+                        tableName: e.target.value,
+                        extra: "[comment]",
+                      }),
+                    },
+                  ]);
+                  setRedoStack([]);
+                }}
               />
             </Collapse.Panel>
           </Collapse>

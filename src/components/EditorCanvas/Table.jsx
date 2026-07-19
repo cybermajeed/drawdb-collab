@@ -26,6 +26,7 @@ import {
   ButtonGroup,
   SideSheet,
   Divider,
+  Toast,
 } from "@douyinfe/semi-ui";
 import {
   useLayout,
@@ -33,6 +34,7 @@ import {
   useDiagram,
   useSelect,
   useUndoRedo,
+  useCollab,
 } from "../../hooks";
 import TableInfo from "../EditorSidePanel/TablesTab/TableInfo";
 import { useTranslation } from "react-i18next";
@@ -75,6 +77,41 @@ export default function Table({
     bulkSelectedElements,
     setBulkSelectedElements,
   } = useSelect();
+  const {
+    acquireTableLock,
+    connectionState,
+    hasTableLock,
+    isTableLockedByOther,
+    releaseTableLocks,
+    tableLocks,
+  } = useCollab();
+  const collaborationLock = tableLocks[tableData.id];
+  const lockedByParticipant = isTableLockedByOther(tableData.id);
+
+  const runWithTableLock = async (action) => {
+    if (connectionState !== "connected") {
+      action();
+      return;
+    }
+    if (lockedByParticipant) {
+      Toast.warning(
+        t("collaboration_table_lock_denied", {
+          name:
+            collaborationLock?.displayName ?? t("collaboration_participant"),
+        }),
+      );
+      return;
+    }
+    const alreadyOwned = hasTableLock(tableData.id);
+    if (!(await acquireTableLock(tableData.id))) {
+      Toast.warning(t("collaboration_table_lock_unavailable"));
+      return;
+    }
+    action();
+    if (!alreadyOwned) {
+      window.setTimeout(() => releaseTableLocks([tableData.id]), 2_000);
+    }
+  };
 
   const borderColor = useMemo(
     () => (settings.mode === "light" ? "border-zinc-300" : "border-zinc-600"),
@@ -107,34 +144,40 @@ export default function Table({
       )
     );
   }, [selectedElement, tableData, bulkSelectedElements]);
+  const isSideSheetEditorVisible =
+    selectedElement.element === ObjectType.TABLE &&
+    selectedElement.id === tableData.id &&
+    selectedElement.open &&
+    !layout.sidebar;
 
-  const toggleTableCollapse = (e) => {
+  const toggleTableCollapse = async (e) => {
     e.stopPropagation();
     if (layout.readOnly) return;
 
     const collapsed = !tableData.collapsed;
-    setUndoStack((prev) => [
-      ...prev,
-      {
-        action: Action.EDIT,
-        element: ObjectType.TABLE,
-        component: "self",
-        tid: tableData.id,
-        undo: { collapsed: tableData.collapsed },
-        redo: { collapsed },
-        message: t("edit_table", {
-          tableName: tableData.name,
-          extra: "[collapse fields]",
-        }),
-      },
-    ]);
-    setRedoStack([]);
-    updateTable(tableData.id, { collapsed });
+    await runWithTableLock(() => {
+      setUndoStack((prev) => [
+        ...prev,
+        {
+          action: Action.EDIT,
+          element: ObjectType.TABLE,
+          component: "self",
+          tid: tableData.id,
+          undo: { collapsed: tableData.collapsed },
+          redo: { collapsed },
+          message: t("edit_table", {
+            tableName: tableData.name,
+            extra: "[collapse fields]",
+          }),
+        },
+      ]);
+      setRedoStack([]);
+      updateTable(tableData.id, { collapsed });
+    });
   };
 
-  const lockUnlockTable = (e) => {
+  const lockUnlockTable = async (e) => {
     const locking = !tableData.locked;
-    updateTable(tableData.id, { locked: locking });
 
     const lockTable = () => {
       setSelectedElement({
@@ -170,11 +213,11 @@ export default function Table({
       }));
     };
 
-    if (locking) {
-      lockTable();
-    } else {
-      unlockTable();
-    }
+    await runWithTableLock(() => {
+      updateTable(tableData.id, { locked: locking });
+      if (locking) lockTable();
+      else unlockTable();
+    });
   };
 
   const duplicateTable = () => {
@@ -244,7 +287,9 @@ export default function Table({
         y={tableData.y}
         width={settings.tableWidth}
         height={height}
-        className="group drop-shadow-lg rounded-md cursor-move"
+        className={`group drop-shadow-lg rounded-md ${
+          lockedByParticipant ? "cursor-not-allowed" : "cursor-move"
+        }`}
         onPointerDown={onPointerDown}
       >
         <div
@@ -276,6 +321,17 @@ export default function Table({
               <div className="px-3 overflow-hidden text-ellipsis whitespace-nowrap min-w-0 flex-1">
                 {tableData.name}
               </div>
+              {lockedByParticipant && (
+                <span
+                  className="me-2 max-w-32 truncate rounded px-1.5 py-0.5 text-[10px] text-white"
+                  style={{ backgroundColor: collaborationLock.color }}
+                  title={t("collaboration_table_lock_denied", {
+                    name: collaborationLock.displayName,
+                  })}
+                >
+                  {collaborationLock.displayName}
+                </span>
+              )}
               <div className="hidden group-hover:flex items-center shrink-0 pe-2">
                 <ButtonGroup
                   type="tertiary"
@@ -293,7 +349,7 @@ export default function Table({
                         <IconUnlock size="small" />
                       )
                     }
-                    disabled={layout.readOnly}
+                    disabled={layout.readOnly || lockedByParticipant}
                     onClick={lockUnlockTable}
                   />
                   <Button
@@ -306,7 +362,7 @@ export default function Table({
                         <IconChevronUp size="small" />
                       )
                     }
-                    disabled={layout.readOnly}
+                    disabled={layout.readOnly || lockedByParticipant}
                     aria-label={
                       tableData.collapsed
                         ? "Expand unlinked fields"
@@ -341,7 +397,7 @@ export default function Table({
                           block
                           style={{ justifyContent: "flex-start" }}
                           onClick={duplicateTable}
-                          disabled={layout.readOnly}
+                          disabled={layout.readOnly || lockedByParticipant}
                         >
                           {t("duplicate")}
                         </Button>
@@ -352,8 +408,10 @@ export default function Table({
                           theme="borderless"
                           block
                           style={{ justifyContent: "flex-start" }}
-                          onClick={() => deleteTable(tableData.id)}
-                          disabled={layout.readOnly}
+                          onClick={() =>
+                            runWithTableLock(() => deleteTable(tableData.id))
+                          }
+                          disabled={layout.readOnly || lockedByParticipant}
                         >
                           {t("delete")}
                         </Button>
@@ -472,12 +530,7 @@ export default function Table({
       <SideSheet
         title={t("edit")}
         size="small"
-        visible={
-          selectedElement.element === ObjectType.TABLE &&
-          selectedElement.id === tableData.id &&
-          selectedElement.open &&
-          !layout.sidebar
-        }
+        visible={isSideSheetEditorVisible}
         onCancel={() =>
           setSelectedElement((prev) => ({
             ...prev,
@@ -486,9 +539,11 @@ export default function Table({
         }
         style={{ paddingBottom: "16px" }}
       >
-        <div className="sidesheet-theme">
-          <TableInfo data={tableData} />
-        </div>
+        {isSideSheetEditorVisible && (
+          <div className="sidesheet-theme">
+            <TableInfo data={tableData} />
+          </div>
+        )}
       </SideSheet>
     </>
   );
@@ -577,10 +632,10 @@ export default function Table({
                   backgroundColor: "#d42020b3",
                 }}
                 icon={<IconMinus />}
-                disabled={layout.readOnly}
+                disabled={layout.readOnly || lockedByParticipant}
                 onClick={() => {
                   if (layout.readOnly) return;
-                  deleteField(fieldData, tableData.id);
+                  runWithTableLock(() => deleteField(fieldData, tableData.id));
                 }}
               />
             ) : settings.showDataTypes ? (

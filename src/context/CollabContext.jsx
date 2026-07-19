@@ -46,11 +46,16 @@ export default function CollabContextProvider({ children }) {
   const isApplyingRemoteRef = useRef(false);
   const cursorSentAtRef = useRef(0);
   const previewThrottleRef = useRef(new Map());
+  const pendingLocksRef = useRef(new Map());
+  const pendingLocksByTableRef = useRef(new Map());
+  const heldLocksRef = useRef(new Map());
+  const retainedLocksRef = useRef(new Map());
   const [connectionState, setConnectionState] = useState(
     CONNECTION_STATE.DISCONNECTED,
   );
   const [participants, setParticipants] = useState([]);
   const [remoteCursors, setRemoteCursors] = useState({});
+  const [tableLocks, setTableLocks] = useState({});
 
   const handleMessage = useCallback((event) => {
     let message;
@@ -94,6 +99,39 @@ export default function CollabContextProvider({ children }) {
     }
     if (message.type === MESSAGE_TYPES.PRESENCE) {
       setParticipants(message.participants || []);
+      return;
+    }
+    if (message.type === MESSAGE_TYPES.TABLE_LOCK_STATE) {
+      const nextLocks = Object.fromEntries(
+        (message.locks || []).map((lock) => [lock.tableId, lock]),
+      );
+      setTableLocks(nextLocks);
+      for (const [tableId, held] of heldLocksRef.current) {
+        const current = nextLocks[tableId];
+        if (
+          !current ||
+          current.clientId !== identityRef.current.clientId ||
+          current.token !== held.token
+        ) {
+          heldLocksRef.current.delete(tableId);
+        }
+      }
+      return;
+    }
+    if (
+      message.type === MESSAGE_TYPES.TABLE_LOCK_GRANTED ||
+      message.type === MESSAGE_TYPES.TABLE_LOCK_DENIED
+    ) {
+      const pending = pendingLocksRef.current.get(message.requestId);
+      if (!pending) return;
+      pendingLocksRef.current.delete(message.requestId);
+      pendingLocksByTableRef.current.delete(pending.tableId);
+      if (message.type === MESSAGE_TYPES.TABLE_LOCK_GRANTED) {
+        heldLocksRef.current.set(pending.tableId, message.lock);
+        pending.resolve(true);
+      } else {
+        pending.resolve(false);
+      }
       return;
     }
     if (
@@ -167,6 +205,7 @@ export default function CollabContextProvider({ children }) {
       sessionRef.current = { diagramId, onSnapshot, onDelta };
       versionRef.current = version;
       setRemoteCursors({});
+      setTableLocks({});
       openSocket(sessionRef.current);
     },
     [openSocket],
@@ -181,10 +220,18 @@ export default function CollabContextProvider({ children }) {
     setConnectionState(CONNECTION_STATE.DISCONNECTED);
     setParticipants([]);
     setRemoteCursors({});
+    setTableLocks({});
     for (const preview of previewThrottleRef.current.values()) {
       window.clearTimeout(preview.timer);
     }
     previewThrottleRef.current.clear();
+    for (const pending of pendingLocksRef.current.values()) {
+      pending.resolve(false);
+    }
+    pendingLocksRef.current.clear();
+    pendingLocksByTableRef.current.clear();
+    heldLocksRef.current.clear();
+    retainedLocksRef.current.clear();
   }, []);
 
   const sendSnapshot = useCallback((name, document) => {
@@ -282,6 +329,134 @@ export default function CollabContextProvider({ children }) {
     previewThrottleRef.current.set(id, current);
   }, []);
 
+  const acquireTableLock = useCallback((tableId) => {
+    if (heldLocksRef.current.has(tableId)) return Promise.resolve(true);
+    const existingRequest = pendingLocksByTableRef.current.get(tableId);
+    if (existingRequest) return existingRequest;
+
+    const socket = socketRef.current;
+    const session = sessionRef.current;
+    if (!session || socket?.readyState !== WebSocket.OPEN) {
+      return Promise.resolve(false);
+    }
+    const requestId = nanoid();
+    const request = new Promise((resolve) => {
+      pendingLocksRef.current.set(requestId, { tableId, resolve });
+      socket.send(
+        JSON.stringify({
+          type: MESSAGE_TYPES.TABLE_LOCK_ACQUIRE,
+          diagramId: session.diagramId,
+          tableId,
+          requestId,
+        }),
+      );
+      window.setTimeout(() => {
+        const pending = pendingLocksRef.current.get(requestId);
+        if (!pending) return;
+        pendingLocksRef.current.delete(requestId);
+        pendingLocksByTableRef.current.delete(tableId);
+        pending.resolve(false);
+      }, 5_000);
+    });
+    pendingLocksByTableRef.current.set(tableId, request);
+    return request;
+  }, []);
+
+  const acquireTableLocks = useCallback(
+    async (tableIds) => {
+      const acquired = [];
+      for (const tableId of [...new Set(tableIds)]) {
+        if (await acquireTableLock(tableId)) {
+          acquired.push(tableId);
+          continue;
+        }
+        const socket = socketRef.current;
+        const session = sessionRef.current;
+        for (const acquiredTableId of acquired) {
+          const lock = heldLocksRef.current.get(acquiredTableId);
+          if (!lock) continue;
+          socket?.send(
+            JSON.stringify({
+              type: MESSAGE_TYPES.TABLE_LOCK_RELEASE,
+              diagramId: session?.diagramId,
+              tableId: acquiredTableId,
+              token: lock.token,
+            }),
+          );
+          heldLocksRef.current.delete(acquiredTableId);
+        }
+        return false;
+      }
+      return true;
+    },
+    [acquireTableLock],
+  );
+
+  const releaseTableLocks = useCallback((tableIds) => {
+    const socket = socketRef.current;
+    const session = sessionRef.current;
+    if (!session || socket?.readyState !== WebSocket.OPEN) return;
+    for (const tableId of [...new Set(tableIds)]) {
+      if ((retainedLocksRef.current.get(tableId) ?? 0) > 0) continue;
+      const lock = heldLocksRef.current.get(tableId);
+      if (!lock) continue;
+      socket.send(
+        JSON.stringify({
+          type: MESSAGE_TYPES.TABLE_LOCK_RELEASE,
+          diagramId: session.diagramId,
+          tableId,
+          token: lock.token,
+        }),
+      );
+      heldLocksRef.current.delete(tableId);
+    }
+  }, []);
+
+  const retainTableLock = useCallback((tableId) => {
+    retainedLocksRef.current.set(
+      tableId,
+      (retainedLocksRef.current.get(tableId) ?? 0) + 1,
+    );
+  }, []);
+
+  const releaseTableLockRetention = useCallback((tableId) => {
+    const count = retainedLocksRef.current.get(tableId) ?? 0;
+    if (count <= 1) retainedLocksRef.current.delete(tableId);
+    else retainedLocksRef.current.set(tableId, count - 1);
+  }, []);
+
+  const isTableLockedByOther = useCallback(
+    (tableId) => {
+      const lock = tableLocks[tableId];
+      return Boolean(lock && lock.clientId !== identityRef.current.clientId);
+    },
+    [tableLocks],
+  );
+
+  const hasTableLock = useCallback(
+    (tableId) => tableLocks[tableId]?.clientId === identityRef.current.clientId,
+    [tableLocks],
+  );
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const socket = socketRef.current;
+      const session = sessionRef.current;
+      if (!session || socket?.readyState !== WebSocket.OPEN) return;
+      for (const [tableId, lock] of heldLocksRef.current) {
+        socket.send(
+          JSON.stringify({
+            type: MESSAGE_TYPES.TABLE_LOCK_RENEW,
+            diagramId: session.diagramId,
+            tableId,
+            token: lock.token,
+          }),
+        );
+      }
+    }, 4_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   useEffect(() => disconnect, [disconnect]);
 
   const value = useMemo(
@@ -292,21 +467,37 @@ export default function CollabContextProvider({ children }) {
       connectionState,
       participants,
       remoteCursors,
+      tableLocks,
       identity: identityRef.current,
       versionRef,
       emitDelta,
       emitAwareness,
+      acquireTableLock,
+      acquireTableLocks,
+      releaseTableLocks,
+      retainTableLock,
+      releaseTableLockRetention,
+      isTableLockedByOther,
+      hasTableLock,
       isApplyingRemoteRef,
     }),
     [
       connect,
+      acquireTableLock,
+      acquireTableLocks,
       connectionState,
       disconnect,
       emitDelta,
       emitAwareness,
+      hasTableLock,
+      isTableLockedByOther,
       participants,
       remoteCursors,
+      releaseTableLockRetention,
+      releaseTableLocks,
+      retainTableLock,
       sendSnapshot,
+      tableLocks,
     ],
   );
   return (
