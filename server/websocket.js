@@ -7,6 +7,7 @@ import {
   isValidParticipant,
   MESSAGE_TYPES,
 } from "./protocol.js";
+import { createTableLockManager } from "./tableLocks.js";
 
 const MAX_MESSAGE_BYTES = 2 * 1024 * 1024;
 
@@ -22,6 +23,7 @@ export function attachCollaborationServer(server, store) {
     maxPayload: MAX_MESSAGE_BYTES,
   });
   const rooms = new Map();
+  const tableLocks = createTableLockManager();
 
   const broadcast = (diagramId, message, except = null) => {
     for (const client of rooms.get(diagramId) || []) {
@@ -37,6 +39,14 @@ export function attachCollaborationServer(server, store) {
       type: MESSAGE_TYPES.PRESENCE,
       diagramId,
       participants,
+    });
+  };
+
+  const broadcastTableLocks = (diagramId) => {
+    broadcast(diagramId, {
+      type: MESSAGE_TYPES.TABLE_LOCK_STATE,
+      diagramId,
+      locks: tableLocks.list(diagramId),
     });
   };
 
@@ -105,6 +115,11 @@ export function attachCollaborationServer(server, store) {
         if (message.lastVersion !== diagram.version) {
           send(socket, { type: MESSAGE_TYPES.SNAPSHOT, diagramId, ...diagram });
         }
+        send(socket, {
+          type: MESSAGE_TYPES.TABLE_LOCK_STATE,
+          diagramId,
+          locks: tableLocks.list(diagramId),
+        });
         broadcastPresence(diagramId);
         return;
       }
@@ -174,6 +189,19 @@ export function attachCollaborationServer(server, store) {
           });
           return;
         }
+        if (
+          !tableLocks.owns(
+            diagramId,
+            message.operation.payload.tableId ?? message.operation.payload.id,
+            socket.participant.clientId,
+          )
+        ) {
+          send(socket, {
+            type: MESSAGE_TYPES.ERROR,
+            message: "A table edit lock is required",
+          });
+          return;
+        }
         broadcast(
           diagramId,
           {
@@ -184,6 +212,66 @@ export function attachCollaborationServer(server, store) {
           },
           socket,
         );
+        return;
+      }
+
+      if (message.type === MESSAGE_TYPES.TABLE_LOCK_ACQUIRE) {
+        if (
+          !CLIENT_ID_PATTERN.test(message.tableId || "") ||
+          !CLIENT_ID_PATTERN.test(message.requestId || "")
+        ) {
+          send(socket, {
+            type: MESSAGE_TYPES.ERROR,
+            message: "Invalid table lock request",
+          });
+          return;
+        }
+        const result = tableLocks.acquire(
+          diagramId,
+          message.tableId,
+          socket.participant,
+        );
+        send(socket, {
+          type: result.granted
+            ? MESSAGE_TYPES.TABLE_LOCK_GRANTED
+            : MESSAGE_TYPES.TABLE_LOCK_DENIED,
+          diagramId,
+          requestId: message.requestId,
+          lock: result.lock,
+        });
+        if (result.granted) broadcastTableLocks(diagramId);
+        return;
+      }
+
+      if (message.type === MESSAGE_TYPES.TABLE_LOCK_RENEW) {
+        if (
+          CLIENT_ID_PATTERN.test(message.tableId || "") &&
+          Number.isInteger(message.token) &&
+          tableLocks.renew(
+            diagramId,
+            message.tableId,
+            socket.participant.clientId,
+            message.token,
+          )
+        ) {
+          broadcastTableLocks(diagramId);
+        }
+        return;
+      }
+
+      if (message.type === MESSAGE_TYPES.TABLE_LOCK_RELEASE) {
+        if (
+          CLIENT_ID_PATTERN.test(message.tableId || "") &&
+          Number.isInteger(message.token) &&
+          tableLocks.release(
+            diagramId,
+            message.tableId,
+            socket.participant.clientId,
+            message.token,
+          )
+        ) {
+          broadcastTableLocks(diagramId);
+        }
         return;
       }
 
@@ -218,8 +306,14 @@ export function attachCollaborationServer(server, store) {
     socket.on("close", () => {
       const room = rooms.get(diagramId);
       room?.delete(socket);
+      const releasedLocks = socket.participant
+        ? tableLocks.releaseClient(diagramId, socket.participant.clientId)
+        : false;
       if (room?.size === 0) rooms.delete(diagramId);
-      else broadcastPresence(diagramId);
+      else {
+        broadcastPresence(diagramId);
+        if (releasedLocks) broadcastTableLocks(diagramId);
+      }
     });
   });
 
@@ -234,6 +328,13 @@ export function attachCollaborationServer(server, store) {
     }
   }, 30_000);
   heartbeat.unref();
+  const lockSweep = setInterval(() => {
+    for (const diagramId of tableLocks.sweep()) {
+      broadcastTableLocks(diagramId);
+    }
+  }, 2_000);
+  lockSweep.unref();
   wss.on("close", () => clearInterval(heartbeat));
+  wss.on("close", () => clearInterval(lockSweep));
   return wss;
 }

@@ -7,6 +7,7 @@ import {
   useSaveState,
   useLayout,
   useUndoRedo,
+  useCollab,
 } from "../../../hooks";
 import { Action, ObjectType, State } from "../../../data/constants";
 import { useTranslation } from "react-i18next";
@@ -77,9 +78,28 @@ function TableListItem({ table }) {
   const { updateTable } = useDiagram();
   const { setUndoStack, setRedoStack } = useUndoRedo();
   const { t } = useTranslation();
+  const {
+    acquireTableLock,
+    connectionState,
+    hasTableLock,
+    isTableLockedByOther,
+    releaseTableLocks,
+    tableLocks,
+  } = useCollab();
+  const lockedByParticipant = isTableLockedByOther(table.id);
 
-  const toggleTableVisibility = (e) => {
+  const toggleTableVisibility = async (e) => {
     e.stopPropagation();
+    if (lockedByParticipant) {
+      return;
+    }
+    const alreadyOwned = hasTableLock(table.id);
+    if (
+      connectionState === "connected" &&
+      !(await acquireTableLock(table.id))
+    ) {
+      return;
+    }
     setUndoStack((prev) => [
       ...prev,
       {
@@ -97,6 +117,9 @@ function TableListItem({ table }) {
     ]);
     setRedoStack([]);
     updateTable(table.id, { hidden: !table.hidden });
+    if (connectionState === "connected" && !alreadyOwned) {
+      window.setTimeout(() => releaseTableLocks([table.id]), 2_000);
+    }
   };
 
   return (
@@ -106,7 +129,10 @@ function TableListItem({ table }) {
         header={
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-2 flex-1">
-              <DragHandle readOnly={layout.readOnly} id={table.id} />
+              <DragHandle
+                readOnly={layout.readOnly || lockedByParticipant}
+                id={table.id}
+              />
               <div className="overflow-hidden text-ellipsis whitespace-nowrap">
                 {table.name}
               </div>
@@ -116,6 +142,14 @@ function TableListItem({ table }) {
               theme="borderless"
               type="tertiary"
               onClick={toggleTableVisibility}
+              disabled={layout.readOnly || lockedByParticipant}
+              title={
+                lockedByParticipant
+                  ? t("collaboration_table_lock_denied", {
+                      name: tableLocks[table.id]?.displayName,
+                    })
+                  : undefined
+              }
               icon={table.hidden ? <IconEyeClosed /> : <IconEyeOpened />}
               className="me-2"
             />
