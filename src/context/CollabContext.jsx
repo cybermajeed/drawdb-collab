@@ -9,7 +9,18 @@ import {
 import { nanoid } from "nanoid";
 import { CONNECTION_STATE, MESSAGE_TYPES } from "../collaboration/protocol";
 
-const COLORS = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c"];
+export const COLORS = [
+  "#2563eb", // blue
+  "#dc2626", // red
+  "#16a34a", // green
+  "#9333ea", // purple
+  "#ea580c", // orange
+  "#0d9488", // teal
+  "#db2777", // pink
+  "#ca8a04", // yellow
+  "#4f46e5", // indigo
+  "#0891b2", // cyan
+];
 
 function getIdentity() {
   const stored = localStorage.getItem("drawdb-collaboration-identity");
@@ -468,6 +479,27 @@ export default function CollabContextProvider({ children }) {
     return () => window.clearInterval(interval);
   }, []);
 
+  const updateIdentity = useCallback((displayName, color) => {
+    const identity = {
+      ...identityRef.current,
+      displayName,
+      color,
+    };
+    identityRef.current = identity;
+    localStorage.setItem(
+      "drawdb-collaboration-identity",
+      JSON.stringify(identity),
+    );
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(
+        JSON.stringify({
+          type: MESSAGE_TYPES.UPDATE_PARTICIPANT,
+          participant: identity,
+        }),
+      );
+    }
+  }, []);
+
   useEffect(() => disconnect, [disconnect]);
 
   const value = useMemo(
@@ -480,6 +512,7 @@ export default function CollabContextProvider({ children }) {
       remoteCursors,
       tableLocks,
       identity: identityRef.current,
+      updateIdentity,
       versionRef,
       emitDelta,
       emitAwareness,
@@ -509,6 +542,7 @@ export default function CollabContextProvider({ children }) {
       retainTableLock,
       sendSnapshot,
       tableLocks,
+      updateIdentity,
     ],
   );
   return (

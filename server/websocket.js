@@ -125,6 +125,40 @@ export function attachCollaborationServer(server, store) {
         return;
       }
 
+      if (message.type === MESSAGE_TYPES.UPDATE_PARTICIPANT) {
+        if (!isValidParticipant(message.participant)) {
+          send(socket, {
+            type: MESSAGE_TYPES.ERROR,
+            message: "Invalid participant",
+          });
+          return;
+        }
+        
+        socket.participant = message.participant;
+        
+        // Update table locks with new participant info if they have any
+        let locksUpdated = false;
+        for (const lock of tableLocks.list(diagramId)) {
+          if (lock.clientId === socket.participant.clientId) {
+            lock.displayName = socket.participant.displayName;
+            lock.color = socket.participant.color;
+            locksUpdated = true;
+          }
+        }
+        
+        // Broadcast presence so others see the new name/color
+        broadcastPresence(diagramId);
+        
+        if (locksUpdated) {
+          broadcast(diagramId, {
+            type: MESSAGE_TYPES.TABLE_LOCK_STATE,
+            diagramId,
+            locks: tableLocks.list(diagramId),
+          });
+        }
+        return;
+      }
+
       if (!socket.participant) {
         send(socket, {
           type: MESSAGE_TYPES.ERROR,

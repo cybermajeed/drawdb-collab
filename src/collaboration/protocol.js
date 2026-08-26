@@ -1,6 +1,7 @@
 export const MESSAGE_TYPES = Object.freeze({
   JOIN: "join",
   JOINED: "joined",
+  UPDATE_PARTICIPANT: "update_participant",
   OPERATION: "operation",
   OPERATION_APPLIED: "operation_applied",
   OPERATION_PREVIEW: "operation_preview",

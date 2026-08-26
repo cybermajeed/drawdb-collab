@@ -24,6 +24,7 @@ import {
   useCollab,
 } from "../hooks";
 import FloatingControls from "./FloatingControls";
+import EditProfileModal from "./EditProfileModal";
 import { Button, Modal, Tag } from "@douyinfe/semi-ui";
 import { IconAlertTriangle } from "@douyinfe/semi-icons";
 import { useTranslation } from "react-i18next";
@@ -50,6 +51,8 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
   const [lastSaved, setLastSaved] = useState("");
   const [showSelectDbModal, setShowSelectDbModal] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [showImportSource, setShowImportSource] = useState(false);
+  const [editProfileVisible, setEditProfileVisible] = useState(false);
   const [selectedDb, setSelectedDb] = useState("");
 
   const pendingNewIdRef = useRef(null);
@@ -401,7 +404,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
           </CanvasContextProvider>
           <Slot name="canvas-overlay" />
           {isDiagram && loadedDiagramId && (
-            <div className="pointer-events-none absolute right-3 top-3 z-40 flex items-center gap-2 rounded-full border border-zinc-200 bg-white/90 px-3 py-1.5 text-xs text-zinc-800 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-100">
+            <div className="absolute right-3 top-3 z-40 flex items-center gap-2 rounded-full border border-zinc-200 bg-white/90 px-3 py-1.5 text-xs text-zinc-800 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-100">
               <span
                 className={`h-2 w-2 rounded-full ${
                   connectionState === "connected"
@@ -421,8 +424,21 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
                   })}
                 </span>
               )}
+              {connectionState === "connected" && (
+                <button
+                  onClick={() => setEditProfileVisible(true)}
+                  className="ml-1 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors"
+                  title="Edit Profile"
+                >
+                  <i className="fa-solid fa-pen-to-square"></i>
+                </button>
+              )}
             </div>
           )}
+          <EditProfileModal
+            visible={editProfileVisible}
+            onCancel={() => setEditProfileVisible(false)}
+          />
           {layout.toolbar && (
             <div
               ref={setToolbarContainer}
