@@ -1,4 +1,5 @@
 const JSON_HEADERS = { "Content-Type": "application/json" };
+const API_BASE = import.meta.env.VITE_BACKEND_URL || "";
 
 async function request(url, options) {
   const response = await fetch(url, options);
@@ -17,28 +18,28 @@ async function request(url, options) {
 
 export const diagramApi = {
   async list() {
-    const result = await request("/api/diagrams");
+    const result = await request(`${API_BASE}/api/diagrams`);
     return result.diagrams;
   },
   get(id) {
-    return request(`/api/diagrams/${encodeURIComponent(id)}`);
+    return request(`${API_BASE}/api/diagrams/${encodeURIComponent(id)}`);
   },
   create({ id, name, document }) {
-    return request("/api/diagrams", {
+    return request(`${API_BASE}/api/diagrams`, {
       method: "POST",
       headers: JSON_HEADERS,
       body: JSON.stringify({ id, name, document }),
     });
   },
   update(id, { name, document, baseVersion }) {
-    return request(`/api/diagrams/${encodeURIComponent(id)}`, {
+    return request(`${API_BASE}/api/diagrams/${encodeURIComponent(id)}`, {
       method: "PUT",
       headers: JSON_HEADERS,
       body: JSON.stringify({ name, document, baseVersion }),
     });
   },
   delete(id) {
-    return request(`/api/diagrams/${encodeURIComponent(id)}`, {
+    return request(`${API_BASE}/api/diagrams/${encodeURIComponent(id)}`, {
       method: "DELETE",
     });
   },

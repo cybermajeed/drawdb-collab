@@ -157,9 +157,12 @@ export default function CollabContextProvider({ children }) {
     (session) => {
       if (!session || socketRef.current?.readyState === WebSocket.OPEN) return;
       setConnectionState(CONNECTION_STATE.CONNECTING);
-      const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const backendUrl = import.meta.env.VITE_BACKEND_URL
+        ? new URL(import.meta.env.VITE_BACKEND_URL)
+        : window.location;
+      const scheme = backendUrl.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(
-        `${scheme}//${window.location.host}/ws/diagrams/${encodeURIComponent(session.diagramId)}`,
+        `${scheme}//${backendUrl.host}/ws/diagrams/${encodeURIComponent(session.diagramId)}`,
       );
       socketRef.current = socket;
       socket.onopen = () => {

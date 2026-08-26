@@ -4,6 +4,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
+import cors from "cors";
 import { createDiagramStore, openDatabase } from "./database.js";
 import { DIAGRAM_ID_PATTERN, isPlainObject } from "./protocol.js";
 import { attachCollaborationServer } from "./websocket.js";
@@ -19,6 +20,7 @@ export function createApplication({ databasePath, staticPath } = {}) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
+  app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
   app.use(express.json({ limit: MAX_DOCUMENT_BYTES }));
 
   const validId = (req, res, next) => {
