@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Modal, Input, Toast } from "@douyinfe/semi-ui";
 import { useCollab } from "../hooks";
 import { COLORS } from "../context/CollabContext";
