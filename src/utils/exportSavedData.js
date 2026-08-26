@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import { db } from "../data/db";
+import { db } from "../data/db.js";
 import { saveAs } from "file-saver";
 import { diagramApi } from "../api/diagrams";
 

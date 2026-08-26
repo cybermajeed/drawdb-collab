@@ -7,7 +7,7 @@ import CollaborationCursors from "./CollaborationCursors";
 import { CanvasContextProvider } from "../context/CanvasContext";
 import SidePanel from "./EditorSidePanel/SidePanel";
 import { DB, State } from "../data/constants";
-import { db } from "../data/db";
+import { db } from "../data/db.js";
 import { diagramApi } from "../api/diagrams";
 import {
   useLayout,
