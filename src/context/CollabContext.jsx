@@ -12,21 +12,29 @@ import { CONNECTION_STATE, MESSAGE_TYPES } from "../collaboration/protocol";
 const COLORS = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c"];
 
 function getIdentity() {
-  const stored = sessionStorage.getItem("drawdb-collaboration-identity");
+  const stored = localStorage.getItem("drawdb-collaboration-identity");
   if (stored) {
     try {
       return JSON.parse(stored);
     } catch {
-      sessionStorage.removeItem("drawdb-collaboration-identity");
+      localStorage.removeItem("drawdb-collaboration-identity");
     }
   }
-  const suffix = Math.floor(Math.random() * 900 + 100);
+
+  let name = window.prompt("Welcome to Collaboration! Please enter your name:");
+  if (!name || name.trim() === "") {
+    const suffix = Math.floor(Math.random() * 900 + 100);
+    name = `Guest ${suffix}`;
+  } else {
+    name = name.trim();
+  }
+
   const identity = {
     clientId: nanoid(),
-    displayName: `Guest ${suffix}`,
+    displayName: name,
     color: COLORS[Math.floor(Math.random() * COLORS.length)],
   };
-  sessionStorage.setItem(
+  localStorage.setItem(
     "drawdb-collaboration-identity",
     JSON.stringify(identity),
   );
