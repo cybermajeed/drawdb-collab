@@ -1,12 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { Modal, Input, Toast } from "@douyinfe/semi-ui";
-import { useCollab } from "../hooks/useCollab";
+import { useCollab } from "../hooks";
 import { COLORS } from "../context/CollabContext";
-import { useTranslation } from "react-i18next";
-
 export default function EditProfileModal({ visible, onCancel }) {
   const { identity, updateIdentity, participants } = useCollab();
-  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [color, setColor] = useState("");
 
@@ -27,7 +24,7 @@ export default function EditProfileModal({ visible, onCancel }) {
     const isTaken = participants.some(
       (p) =>
         p.displayName.toLowerCase() === trimmed.toLowerCase() &&
-        p.clientId !== identity.clientId
+        p.clientId !== identity.clientId,
     );
     if (isTaken) {
       Toast.error("This username is already taken in the current session.");
