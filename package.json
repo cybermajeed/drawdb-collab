@@ -68,5 +68,10 @@
     "prettier": "3.2.5",
     "tailwindcss": "^4.0.14",
     "vite": "^8.1.0"
+  },
+  "allowScripts": {
+    "@tailwindcss/oxide@4.1.12": true,
+    "better-sqlite3@12.11.1": true,
+    "core-js@3.45.1": true
   }
 }
