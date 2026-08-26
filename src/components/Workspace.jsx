@@ -25,7 +25,7 @@ import {
 } from "../hooks";
 import FloatingControls from "./FloatingControls";
 import EditProfileModal from "./EditProfileModal";
-import { Button, Modal, Tag } from "@douyinfe/semi-ui";
+import { Button, Modal, Tag, Tooltip } from "@douyinfe/semi-ui";
 import { IconAlertTriangle } from "@douyinfe/semi-icons";
 import { useTranslation } from "react-i18next";
 import { databases } from "../data/databases";
@@ -83,6 +83,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
     connectionState,
     participants,
     versionRef,
+    identity,
   } = useCollab();
   const { t, i18n } = useTranslation();
   const { id: routeDiagramId } = useParams();
@@ -418,11 +419,38 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
                 {t(`collaboration_${connectionState}`, connectionState)}
               </span>
               {participants.length > 0 && (
-                <span className="text-zinc-600 dark:text-zinc-300">
-                  {t("collaboration_participants", {
-                    count: participants.length,
-                  })}
-                </span>
+                <Tooltip
+                  position="bottom"
+                  content={
+                    <div className="flex flex-col gap-2 p-1">
+                      <div className="font-semibold text-xs border-b border-zinc-200 dark:border-zinc-700 pb-1 mb-1">
+                        Online Users
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: identity?.color }}
+                        />
+                        <span>{identity?.displayName} (You)</span>
+                      </div>
+                      {participants.map((p) => (
+                        <div key={p.clientId} className="flex items-center gap-2">
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: p.color }}
+                          />
+                          <span>{p.displayName}</span>
+                        </div>
+                      ))}
+                    </div>
+                  }
+                >
+                  <span className="text-zinc-600 dark:text-zinc-300 cursor-default underline decoration-dotted underline-offset-2">
+                    {t("collaboration_participants", {
+                      count: participants.length,
+                    })}
+                  </span>
+                </Tooltip>
               )}
               {connectionState === "connected" && (
                 <button
