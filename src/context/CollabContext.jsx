@@ -7,7 +7,9 @@ import {
   useState,
 } from "react";
 import { nanoid } from "nanoid";
-import { CONNECTION_STATE, MESSAGE_TYPES } from "../collaboration/protocol";
+import { CONNECTION_STATE } from "../collaboration/protocol";
+import { supabase } from "../lib/supabase";
+import { diagramApi } from "../api/diagrams";
 
 export const COLORS = [
   "#2563eb", // blue
@@ -56,19 +58,18 @@ export const CollabContext = createContext(null);
 
 export default function CollabContextProvider({ children }) {
   const identityRef = useRef(getIdentity());
-  const socketRef = useRef(null);
-  const reconnectRef = useRef(null);
-  const reconnectAttemptsRef = useRef(0);
+  const channelRef = useRef(null);
   const sessionRef = useRef(null);
-  const pendingRef = useRef(new Map());
   const versionRef = useRef(0);
   const isApplyingRemoteRef = useRef(false);
   const cursorSentAtRef = useRef(0);
   const previewThrottleRef = useRef(new Map());
-  const pendingLocksRef = useRef(new Map());
-  const pendingLocksByTableRef = useRef(new Map());
-  const heldLocksRef = useRef(new Map());
+
+  // Supabase Presence doesn't have an explicit table lock service,
+  // so we'll store our locks in our presence state and aggregate.
+  const heldLocksRef = useRef(new Set());
   const retainedLocksRef = useRef(new Map());
+
   const [connectionState, setConnectionState] = useState(
     CONNECTION_STATE.DISCONNECTED,
   );
@@ -76,143 +77,16 @@ export default function CollabContextProvider({ children }) {
   const [remoteCursors, setRemoteCursors] = useState({});
   const [tableLocks, setTableLocks] = useState({});
 
-  const handleMessage = useCallback((event) => {
-    let message;
-    try {
-      message = JSON.parse(event.data);
-    } catch {
-      return;
+  const trackPresence = useCallback(() => {
+    if (channelRef.current && connectionState === CONNECTION_STATE.CONNECTED) {
+      channelRef.current.track({
+        clientId: identityRef.current.clientId,
+        displayName: identityRef.current.displayName,
+        color: identityRef.current.color,
+        lockedTables: Array.from(heldLocksRef.current),
+      });
     }
-    if (message.type === MESSAGE_TYPES.JOINED) {
-      versionRef.current = message.version;
-      setConnectionState(CONNECTION_STATE.CONNECTED);
-      reconnectAttemptsRef.current = 0;
-      return;
-    }
-    if (
-      message.type === MESSAGE_TYPES.SNAPSHOT ||
-      message.type === MESSAGE_TYPES.RESYNC_REQUIRED
-    ) {
-      versionRef.current = message.version;
-      sessionRef.current?.onSnapshot?.(message);
-      if (message.type === MESSAGE_TYPES.RESYNC_REQUIRED) {
-        for (const pending of pendingRef.current.values())
-          pending.reject(message);
-        pendingRef.current.clear();
-      }
-      return;
-    }
-    if (message.type === MESSAGE_TYPES.OPERATION_APPLIED) {
-      versionRef.current = message.version;
-      const pending = pendingRef.current.get(message.operationId);
-      if (pending) {
-        pending.resolve(message);
-        pendingRef.current.delete(message.operationId);
-      } else if (message.clientId !== identityRef.current.clientId) {
-        sessionRef.current?.onSnapshot?.({
-          ...message.operation.payload,
-          version: message.version,
-        });
-      }
-      return;
-    }
-    if (message.type === MESSAGE_TYPES.PRESENCE) {
-      setParticipants(message.participants || []);
-      return;
-    }
-    if (message.type === MESSAGE_TYPES.TABLE_LOCK_STATE) {
-      const nextLocks = Object.fromEntries(
-        (message.locks || []).map((lock) => [lock.tableId, lock]),
-      );
-      setTableLocks(nextLocks);
-      for (const [tableId, held] of heldLocksRef.current) {
-        const current = nextLocks[tableId];
-        if (
-          !current ||
-          current.clientId !== identityRef.current.clientId ||
-          current.token !== held.token
-        ) {
-          heldLocksRef.current.delete(tableId);
-        }
-      }
-      return;
-    }
-    if (
-      message.type === MESSAGE_TYPES.TABLE_LOCK_GRANTED ||
-      message.type === MESSAGE_TYPES.TABLE_LOCK_DENIED
-    ) {
-      const pending = pendingLocksRef.current.get(message.requestId);
-      if (!pending) return;
-      pendingLocksRef.current.delete(message.requestId);
-      pendingLocksByTableRef.current.delete(pending.tableId);
-      if (message.type === MESSAGE_TYPES.TABLE_LOCK_GRANTED) {
-        heldLocksRef.current.set(pending.tableId, message.lock);
-        pending.resolve(true);
-      } else {
-        pending.resolve(false);
-      }
-      return;
-    }
-    if (
-      message.type === MESSAGE_TYPES.OPERATION_PREVIEW &&
-      message.clientId !== identityRef.current.clientId
-    ) {
-      sessionRef.current?.onDelta?.(message.operation);
-      return;
-    }
-    if (message.type === MESSAGE_TYPES.CURSOR) {
-      setRemoteCursors((current) => ({
-        ...current,
-        [message.clientId]: {
-          x: message.x,
-          y: message.y,
-          selected: message.selected,
-        },
-      }));
-    }
-  }, []);
-
-  const openSocket = useCallback(
-    (session) => {
-      if (!session || socketRef.current?.readyState === WebSocket.OPEN) return;
-      setConnectionState(CONNECTION_STATE.CONNECTING);
-      const backendUrl = import.meta.env.VITE_BACKEND_URL
-        ? new URL(import.meta.env.VITE_BACKEND_URL)
-        : window.location;
-      const scheme = backendUrl.protocol === "https:" ? "wss:" : "ws:";
-      const socket = new WebSocket(
-        `${scheme}//${backendUrl.host}/ws/diagrams/${encodeURIComponent(session.diagramId)}`,
-      );
-      socketRef.current = socket;
-      socket.onopen = () => {
-        socket.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.JOIN,
-            diagramId: session.diagramId,
-            participant: identityRef.current,
-            lastVersion: versionRef.current,
-          }),
-        );
-      };
-      socket.onmessage = handleMessage;
-      socket.onclose = () => {
-        if (socketRef.current !== socket) return;
-        socketRef.current = null;
-        setConnectionState(CONNECTION_STATE.CONNECTING);
-        const delay = Math.min(
-          1000 * 2 ** reconnectAttemptsRef.current,
-          15_000,
-        );
-        reconnectAttemptsRef.current += 1;
-        reconnectRef.current = window.setTimeout(
-          () => openSocket(sessionRef.current),
-          delay,
-        );
-      };
-      socket.onerror = () => socket.close();
-    },
-    [handleMessage],
-  );
+  }, [connectionState]);
 
   const connect = useCallback(
     ({ diagramId, version, onSnapshot, onDelta }) => {
@@ -222,217 +96,290 @@ export default function CollabContextProvider({ children }) {
         versionRef.current = version;
         return;
       }
-      window.clearTimeout(reconnectRef.current);
-      socketRef.current?.close();
+
+      if (channelRef.current) {
+        channelRef.current.unsubscribe();
+        channelRef.current = null;
+      }
+
       sessionRef.current = { diagramId, onSnapshot, onDelta };
       versionRef.current = version;
       setRemoteCursors({});
       setTableLocks({});
-      openSocket(sessionRef.current);
+      setParticipants([]);
+      heldLocksRef.current.clear();
+      retainedLocksRef.current.clear();
+
+      setConnectionState(CONNECTION_STATE.CONNECTING);
+
+      const channel = supabase.channel(`diagrams:${diagramId}`, {
+        config: {
+          presence: {
+            key: identityRef.current.clientId,
+          },
+        },
+      });
+      channelRef.current = channel;
+
+      // Listen to broadcast operations (previews)
+      channel.on(
+        "broadcast",
+        { event: "OPERATION_PREVIEW" },
+        (payload) => {
+          if (payload.payload.clientId !== identityRef.current.clientId) {
+            sessionRef.current?.onDelta?.(payload.payload.operation);
+          }
+        }
+      );
+
+      // Listen to awareness (cursors)
+      channel.on("broadcast", { event: "CURSOR" }, (payload) => {
+        if (payload.payload.clientId !== identityRef.current.clientId) {
+          setRemoteCursors((current) => ({
+            ...current,
+            [payload.payload.clientId]: {
+              x: payload.payload.x,
+              y: payload.payload.y,
+              selected: payload.payload.selected,
+            },
+          }));
+        }
+      });
+
+      // Listen to presence
+      channel.on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState();
+        const nextParticipants = [];
+        const nextLocks = {};
+        
+        for (const [clientId, presences] of Object.entries(state)) {
+          if (!presences || presences.length === 0) continue;
+          // We only care about the most recent presence for a given client
+          const p = presences[0];
+          nextParticipants.push({
+            clientId: p.clientId,
+            displayName: p.displayName,
+            color: p.color,
+          });
+
+          // Aggregate table locks
+          if (Array.isArray(p.lockedTables)) {
+            p.lockedTables.forEach((tableId) => {
+              nextLocks[tableId] = {
+                tableId,
+                clientId: p.clientId,
+                displayName: p.displayName,
+                color: p.color,
+                token: 1, // Dummy token
+              };
+            });
+          }
+        }
+        setParticipants(nextParticipants);
+        setTableLocks(nextLocks);
+      });
+
+      // Listen to DB changes for snapshots
+      channel.on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "diagrams", filter: `id=eq.${diagramId}` },
+        (payload) => {
+          const row = payload.new;
+          if (row.version > versionRef.current) {
+            versionRef.current = row.version;
+            sessionRef.current?.onSnapshot?.({
+              name: row.name,
+              document: row.document,
+              version: row.version,
+            });
+          }
+        }
+      );
+
+      channel.subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          setConnectionState(CONNECTION_STATE.CONNECTED);
+          channel.track({
+            clientId: identityRef.current.clientId,
+            displayName: identityRef.current.displayName,
+            color: identityRef.current.color,
+            lockedTables: Array.from(heldLocksRef.current),
+          });
+        } else if (status === "CLOSED" || status === "CHANNEL_ERROR") {
+          setConnectionState(CONNECTION_STATE.DISCONNECTED);
+        }
+      });
     },
-    [openSocket],
+    []
   );
 
   const disconnect = useCallback(() => {
     sessionRef.current = null;
-    window.clearTimeout(reconnectRef.current);
-    const socket = socketRef.current;
-    socketRef.current = null;
-    socket?.close();
+    if (channelRef.current) {
+      channelRef.current.unsubscribe();
+      channelRef.current = null;
+    }
     setConnectionState(CONNECTION_STATE.DISCONNECTED);
     setParticipants([]);
     setRemoteCursors({});
     setTableLocks({});
+    
     for (const preview of previewThrottleRef.current.values()) {
       window.clearTimeout(preview.timer);
     }
     previewThrottleRef.current.clear();
-    for (const pending of pendingLocksRef.current.values()) {
-      pending.resolve(false);
-    }
-    pendingLocksRef.current.clear();
-    pendingLocksByTableRef.current.clear();
+    
     heldLocksRef.current.clear();
     retainedLocksRef.current.clear();
   }, []);
 
-  const sendSnapshot = useCallback((name, document) => {
-    const socket = socketRef.current;
+  const sendSnapshot = useCallback(async (name, document) => {
     const session = sessionRef.current;
-    if (!session || socket?.readyState !== WebSocket.OPEN) {
-      return Promise.reject(
-        new Error("Collaboration connection is unavailable"),
-      );
+    if (!session) {
+      throw new Error("Collaboration connection is unavailable");
     }
-    const operationId = nanoid();
-    return new Promise((resolve, reject) => {
-      pendingRef.current.set(operationId, { resolve, reject });
-      socket.send(
-        JSON.stringify({
-          type: MESSAGE_TYPES.OPERATION,
-          diagramId: session.diagramId,
+    const currentVersion = versionRef.current;
+    try {
+      const updated = await diagramApi.update(session.diagramId, {
+        name,
+        document,
+        baseVersion: currentVersion,
+      });
+      versionRef.current = updated.version;
+      return updated;
+    } catch (e) {
+      if (e.status === 409) {
+        // Resync required
+        versionRef.current = e.diagram.version;
+        sessionRef.current?.onSnapshot?.(e.diagram);
+        throw new Error("Version conflict, diagram was updated by someone else.");
+      }
+      throw e;
+    }
+  }, []);
+
+  const emitAwareness = useCallback(
+    (awareness) => {
+      const now = Date.now();
+      if (now - cursorSentAtRef.current < 50) return;
+      if (!channelRef.current || connectionState !== CONNECTION_STATE.CONNECTED) return;
+      if (!Number.isFinite(awareness.x) || !Number.isFinite(awareness.y)) return;
+      
+      cursorSentAtRef.current = now;
+      channelRef.current.send({
+        type: "broadcast",
+        event: "CURSOR",
+        payload: {
           clientId: identityRef.current.clientId,
-          operationId,
-          baseVersion: versionRef.current,
-          operation: { type: "snapshot.replace", payload: { name, document } },
-        }),
-      );
-      window.setTimeout(() => {
-        if (!pendingRef.current.has(operationId)) return;
-        pendingRef.current.delete(operationId);
-        reject(new Error("Save acknowledgement timed out"));
-      }, 10_000);
-    });
-  }, []);
+          x: awareness.x,
+          y: awareness.y,
+          selected: awareness.selected ?? null,
+        },
+      });
+    },
+    [connectionState]
+  );
 
-  const emitAwareness = useCallback((awareness) => {
-    const now = Date.now();
-    if (now - cursorSentAtRef.current < 50) return;
-    const socket = socketRef.current;
-    const session = sessionRef.current;
-    if (!session || socket?.readyState !== WebSocket.OPEN) return;
-    if (!Number.isFinite(awareness.x) || !Number.isFinite(awareness.y)) return;
-    cursorSentAtRef.current = now;
-    socket.send(
-      JSON.stringify({
-        type: MESSAGE_TYPES.CURSOR,
-        diagramId: session.diagramId,
-        x: awareness.x,
-        y: awareness.y,
-        selected: awareness.selected ?? null,
-      }),
-    );
-  }, []);
+  const emitDelta = useCallback(
+    (delta) => {
+      if (
+        delta?.target !== "table" ||
+        delta.action !== "update" ||
+        delta.data?.length !== 2
+      ) {
+        return;
+      }
+      const [id, values] = delta.data;
+      if (!Number.isFinite(values?.x) || !Number.isFinite(values?.y)) return;
 
-  const emitDelta = useCallback((delta) => {
-    if (
-      delta?.target !== "table" ||
-      delta.action !== "update" ||
-      delta.data?.length !== 2
-    ) {
-      return;
-    }
-    const [id, values] = delta.data;
-    if (!Number.isFinite(values?.x) || !Number.isFinite(values?.y)) return;
+      const sendPreview = (payload) => {
+        if (!channelRef.current || connectionState !== CONNECTION_STATE.CONNECTED) return;
+        channelRef.current.send({
+          type: "broadcast",
+          event: "OPERATION_PREVIEW",
+          payload: {
+            clientId: identityRef.current.clientId,
+            operation: { type: "table.move", payload },
+          }
+        });
+      };
 
-    const sendPreview = (payload) => {
-      const socket = socketRef.current;
-      const session = sessionRef.current;
-      if (!session || socket?.readyState !== WebSocket.OPEN) return;
-      socket.send(
-        JSON.stringify({
-          type: MESSAGE_TYPES.OPERATION_PREVIEW,
-          diagramId: session.diagramId,
-          operation: { type: "table.move", payload },
-        }),
-      );
-    };
-
-    const now = Date.now();
-    const current = previewThrottleRef.current.get(id) ?? {
-      lastSent: 0,
-      timer: null,
-      payload: null,
-    };
-    current.payload = { id, x: values.x, y: values.y };
-    const remaining = 50 - (now - current.lastSent);
-    if (remaining <= 0) {
-      window.clearTimeout(current.timer);
-      current.timer = null;
-      current.lastSent = now;
-      sendPreview(current.payload);
-    } else if (current.timer === null) {
-      current.timer = window.setTimeout(() => {
+      const now = Date.now();
+      const current = previewThrottleRef.current.get(id) ?? {
+        lastSent: 0,
+        timer: null,
+        payload: null,
+      };
+      current.payload = { id, x: values.x, y: values.y };
+      const remaining = 50 - (now - current.lastSent);
+      if (remaining <= 0) {
+        window.clearTimeout(current.timer);
         current.timer = null;
-        current.lastSent = Date.now();
+        current.lastSent = now;
         sendPreview(current.payload);
-      }, remaining);
-    }
-    previewThrottleRef.current.set(id, current);
-  }, []);
+      } else if (current.timer === null) {
+        current.timer = window.setTimeout(() => {
+          current.timer = null;
+          current.lastSent = Date.now();
+          sendPreview(current.payload);
+        }, remaining);
+      }
+      previewThrottleRef.current.set(id, current);
+    },
+    [connectionState]
+  );
 
-  const acquireTableLock = useCallback((tableId) => {
-    if (heldLocksRef.current.has(tableId)) return Promise.resolve(true);
-    const existingRequest = pendingLocksByTableRef.current.get(tableId);
-    if (existingRequest) return existingRequest;
-
-    const socket = socketRef.current;
-    const session = sessionRef.current;
-    if (!session || socket?.readyState !== WebSocket.OPEN) {
-      return Promise.resolve(false);
-    }
-    const requestId = nanoid();
-    const request = new Promise((resolve) => {
-      pendingLocksRef.current.set(requestId, { tableId, resolve });
-      socket.send(
-        JSON.stringify({
-          type: MESSAGE_TYPES.TABLE_LOCK_ACQUIRE,
-          diagramId: session.diagramId,
-          tableId,
-          requestId,
-        }),
-      );
-      window.setTimeout(() => {
-        const pending = pendingLocksRef.current.get(requestId);
-        if (!pending) return;
-        pendingLocksRef.current.delete(requestId);
-        pendingLocksByTableRef.current.delete(tableId);
-        pending.resolve(false);
-      }, 5_000);
-    });
-    pendingLocksByTableRef.current.set(tableId, request);
-    return request;
-  }, []);
+  const acquireTableLock = useCallback(
+    (tableId) => {
+      if (heldLocksRef.current.has(tableId)) return Promise.resolve(true);
+      // Wait for tableLocks state
+      const lock = tableLocks[tableId];
+      if (lock && lock.clientId !== identityRef.current.clientId) {
+        return Promise.resolve(false);
+      }
+      
+      heldLocksRef.current.add(tableId);
+      trackPresence();
+      return Promise.resolve(true);
+    },
+    [tableLocks, trackPresence]
+  );
 
   const acquireTableLocks = useCallback(
     async (tableIds) => {
-      const acquired = [];
+      let success = true;
+      const newlyAcquired = [];
       for (const tableId of [...new Set(tableIds)]) {
         if (await acquireTableLock(tableId)) {
-          acquired.push(tableId);
-          continue;
+          newlyAcquired.push(tableId);
+        } else {
+          success = false;
+          break;
         }
-        const socket = socketRef.current;
-        const session = sessionRef.current;
-        for (const acquiredTableId of acquired) {
-          const lock = heldLocksRef.current.get(acquiredTableId);
-          if (!lock) continue;
-          socket?.send(
-            JSON.stringify({
-              type: MESSAGE_TYPES.TABLE_LOCK_RELEASE,
-              diagramId: session?.diagramId,
-              tableId: acquiredTableId,
-              token: lock.token,
-            }),
-          );
-          heldLocksRef.current.delete(acquiredTableId);
-        }
-        return false;
       }
-      return true;
+      if (!success) {
+        newlyAcquired.forEach(id => heldLocksRef.current.delete(id));
+        if (newlyAcquired.length > 0) trackPresence();
+      }
+      return success;
     },
-    [acquireTableLock],
+    [acquireTableLock, trackPresence]
   );
 
-  const releaseTableLocks = useCallback((tableIds) => {
-    const socket = socketRef.current;
-    const session = sessionRef.current;
-    if (!session || socket?.readyState !== WebSocket.OPEN) return;
-    for (const tableId of [...new Set(tableIds)]) {
-      if ((retainedLocksRef.current.get(tableId) ?? 0) > 0) continue;
-      const lock = heldLocksRef.current.get(tableId);
-      if (!lock) continue;
-      socket.send(
-        JSON.stringify({
-          type: MESSAGE_TYPES.TABLE_LOCK_RELEASE,
-          diagramId: session.diagramId,
-          tableId,
-          token: lock.token,
-        }),
-      );
-      heldLocksRef.current.delete(tableId);
-    }
-  }, []);
+  const releaseTableLocks = useCallback(
+    (tableIds) => {
+      let changed = false;
+      for (const tableId of [...new Set(tableIds)]) {
+        if ((retainedLocksRef.current.get(tableId) ?? 0) > 0) continue;
+        if (heldLocksRef.current.has(tableId)) {
+          heldLocksRef.current.delete(tableId);
+          changed = true;
+        }
+      }
+      if (changed) trackPresence();
+    },
+    [trackPresence]
+  );
 
   const retainTableLock = useCallback((tableId) => {
     retainedLocksRef.current.set(
@@ -452,53 +399,30 @@ export default function CollabContextProvider({ children }) {
       const lock = tableLocks[tableId];
       return Boolean(lock && lock.clientId !== identityRef.current.clientId);
     },
-    [tableLocks],
+    [tableLocks]
   );
 
   const hasTableLock = useCallback(
-    (tableId) => tableLocks[tableId]?.clientId === identityRef.current.clientId,
-    [tableLocks],
+    (tableId) => heldLocksRef.current.has(tableId),
+    []
   );
 
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      const socket = socketRef.current;
-      const session = sessionRef.current;
-      if (!session || socket?.readyState !== WebSocket.OPEN) return;
-      for (const [tableId, lock] of heldLocksRef.current) {
-        socket.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.TABLE_LOCK_RENEW,
-            diagramId: session.diagramId,
-            tableId,
-            token: lock.token,
-          }),
-        );
-      }
-    }, 4_000);
-    return () => window.clearInterval(interval);
-  }, []);
-
-  const updateIdentity = useCallback((displayName, color) => {
-    const identity = {
-      ...identityRef.current,
-      displayName,
-      color,
-    };
-    identityRef.current = identity;
-    localStorage.setItem(
-      "drawdb-collaboration-identity",
-      JSON.stringify(identity),
-    );
-    if (socketRef.current?.readyState === WebSocket.OPEN) {
-      socketRef.current.send(
-        JSON.stringify({
-          type: MESSAGE_TYPES.UPDATE_PARTICIPANT,
-          participant: identity,
-        }),
+  const updateIdentity = useCallback(
+    (displayName, color) => {
+      const identity = {
+        ...identityRef.current,
+        displayName,
+        color,
+      };
+      identityRef.current = identity;
+      localStorage.setItem(
+        "drawdb-collaboration-identity",
+        JSON.stringify(identity),
       );
-    }
-  }, []);
+      trackPresence();
+    },
+    [trackPresence]
+  );
 
   useEffect(() => disconnect, [disconnect]);
 
@@ -543,7 +467,7 @@ export default function CollabContextProvider({ children }) {
       sendSnapshot,
       tableLocks,
       updateIdentity,
-    ],
+    ]
   );
   return (
     <CollabContext.Provider value={value}>{children}</CollabContext.Provider>

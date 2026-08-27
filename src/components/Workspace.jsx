@@ -434,7 +434,10 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
                         <span>{identity?.displayName} (You)</span>
                       </div>
                       {participants.map((p) => (
-                        <div key={p.clientId} className="flex items-center gap-2">
+                        <div
+                          key={p.clientId}
+                          className="flex items-center gap-2"
+                        >
                           <div
                             className="w-3 h-3 rounded-full"
                             style={{ backgroundColor: p.color }}
