@@ -4,9 +4,9 @@ import { templateSeeds } from "./seeds";
 
 export const db = new Dexie("drawDB");
 
-db.version(68)
+db.version(69)
   .stores({
-    diagrams: null,
+    diagrams: "id",
     templates: "++id, custom, templateId",
   })
   .upgrade(async (tx) => {

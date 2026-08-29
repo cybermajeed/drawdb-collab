@@ -157,51 +157,69 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
   );
 
   const save = useCallback(async () => {
-    if (isSavingRef.current) {
-      pendingSaveRef.current = true;
-      return;
-    }
-    isSavingRef.current = true;
-    pendingSaveRef.current = false;
-
     const isNew = isTemplate || !loadedDiagramId || loadedDiagramId === "blank";
     const targetId = isNew
       ? (pendingNewIdRef.current ??= uuidv4())
       : loadedDiagramId;
+
+    const currentTitle = title;
+    const currentDoc = buildDocument();
+
     try {
-      if (isNew) {
-        const created = await diagramApi.create({
-          id: targetId,
-          name: title,
-          document: buildDocument(),
-        });
-        versionRef.current = created.version;
-        pendingNewIdRef.current = null;
-        navigate(`/diagrams/${targetId}`, { replace: true });
-      } else if (connectionState === "connected") {
-        await sendSnapshot(title, buildDocument());
-      } else {
-        const updated = await diagramApi.update(targetId, {
-          name: title,
-          document: buildDocument(),
-          baseVersion: versionRef.current,
-        });
-        versionRef.current = updated.version;
-      }
+      await db.diagrams.put({
+        id: targetId,
+        name: currentTitle,
+        document: currentDoc,
+        updatedAt: Date.now(),
+      });
       setSaveState(State.SAVED);
       setLastSaved(new Date().toLocaleString());
-    } catch (error) {
-      if (error.diagram) applyDiagramState(error.diagram, { remote: true });
-      console.warn("server autosave failed:", error);
-      setSaveState(State.ERROR);
-    } finally {
-      isSavingRef.current = false;
-      if (pendingSaveRef.current) {
-        pendingSaveRef.current = false;
-        // Trigger a new save cycle for queued changes
-        window.setTimeout(() => setSaveState(State.SAVING), 0);
-      }
+    } catch (e) {
+      console.warn("local autosave failed:", e);
     }
+
+    if (isSavingRef.current) {
+      pendingSaveRef.current = true;
+      return;
+    }
+    
+    isSavingRef.current = true;
+    pendingSaveRef.current = false;
+
+    (async function syncToRemote() {
+      try {
+        if (isNew) {
+          const created = await diagramApi.create({
+            id: targetId,
+            name: currentTitle,
+            document: currentDoc,
+          });
+          versionRef.current = created.version;
+          pendingNewIdRef.current = null;
+          navigate(`/diagrams/${targetId}`, { replace: true });
+        } else if (connectionState === "connected") {
+          await sendSnapshot(currentTitle, currentDoc);
+        } else {
+          const updated = await diagramApi.update(targetId, {
+            name: currentTitle,
+            document: currentDoc,
+            baseVersion: versionRef.current,
+          });
+          versionRef.current = updated.version;
+        }
+      } catch (error) {
+        if (error.diagram) applyDiagramState(error.diagram, { remote: true });
+        console.warn("server autosave failed:", error);
+        setSaveState(State.ERROR);
+      } finally {
+        isSavingRef.current = false;
+        if (pendingSaveRef.current) {
+          pendingSaveRef.current = false;
+          // Trigger a new save cycle for queued changes
+          window.setTimeout(() => setSaveState(State.SAVING), 0);
+        }
+      }
+    })();
   }, [
     buildDocument,
     title,
