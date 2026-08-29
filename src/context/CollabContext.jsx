@@ -215,13 +215,20 @@ export default function CollabContextProvider({ children }) {
       } else if (status === "CLOSED") {
         setConnectionState(CONNECTION_STATE.DISCONNECTED);
         if (sessionRef.current) {
+          // Exponential backoff: start at 3s, max at 30s
+          const backoff = Math.min(
+            30000,
+            (sessionRef.current.retryDelay || 1500) * 2,
+          );
+          sessionRef.current.retryDelay = backoff;
+
           window.setTimeout(() => {
             if (sessionRef.current) {
               const session = { ...sessionRef.current };
               sessionRef.current = null;
               connect({ ...session, version: versionRef.current });
             }
-          }, 3000);
+          }, backoff);
         }
       }
     });
