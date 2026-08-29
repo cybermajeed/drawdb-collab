@@ -88,144 +88,144 @@ export default function CollabContextProvider({ children }) {
     }
   }, [connectionState]);
 
-  const connect = useCallback(
-    ({ diagramId, version, onSnapshot, onDelta }) => {
-      if (sessionRef.current?.diagramId === diagramId) {
-        sessionRef.current.onSnapshot = onSnapshot;
-        sessionRef.current.onDelta = onDelta;
-        versionRef.current = version;
-        return;
-      }
-
-      if (channelRef.current) {
-        channelRef.current.unsubscribe();
-        channelRef.current = null;
-      }
-
-      sessionRef.current = { diagramId, onSnapshot, onDelta };
+  const connect = useCallback(({ diagramId, version, onSnapshot, onDelta }) => {
+    if (sessionRef.current?.diagramId === diagramId) {
+      sessionRef.current.onSnapshot = onSnapshot;
+      sessionRef.current.onDelta = onDelta;
       versionRef.current = version;
-      setRemoteCursors({});
-      setTableLocks({});
-      setParticipants([]);
-      heldLocksRef.current.clear();
-      retainedLocksRef.current.clear();
+      return;
+    }
 
-      setConnectionState(CONNECTION_STATE.CONNECTING);
+    if (channelRef.current) {
+      channelRef.current.unsubscribe();
+      channelRef.current = null;
+    }
 
-      const channel = supabase.channel(`diagrams:${diagramId}`, {
-        config: {
-          presence: {
-            key: identityRef.current.clientId,
-          },
+    sessionRef.current = { diagramId, onSnapshot, onDelta };
+    versionRef.current = version;
+    setRemoteCursors({});
+    setTableLocks({});
+    setParticipants([]);
+    heldLocksRef.current.clear();
+    retainedLocksRef.current.clear();
+
+    setConnectionState(CONNECTION_STATE.CONNECTING);
+
+    const channel = supabase.channel(`diagrams:${diagramId}`, {
+      config: {
+        presence: {
+          key: identityRef.current.clientId,
         },
-      });
-      channelRef.current = channel;
+      },
+    });
+    channelRef.current = channel;
 
-      // Listen to broadcast operations (previews)
-      channel.on(
-        "broadcast",
-        { event: "OPERATION_PREVIEW" },
-        (payload) => {
-          if (payload.payload.clientId !== identityRef.current.clientId) {
-            sessionRef.current?.onDelta?.(payload.payload.operation);
-          }
+    // Listen to broadcast operations (previews)
+    channel.on("broadcast", { event: "OPERATION_PREVIEW" }, (payload) => {
+      if (payload.payload.clientId !== identityRef.current.clientId) {
+        sessionRef.current?.onDelta?.(payload.payload.operation);
+      }
+    });
+
+    // Listen to awareness (cursors)
+    channel.on("broadcast", { event: "CURSOR" }, (payload) => {
+      if (payload.payload.clientId !== identityRef.current.clientId) {
+        setRemoteCursors((current) => ({
+          ...current,
+          [payload.payload.clientId]: {
+            x: payload.payload.x,
+            y: payload.payload.y,
+            selected: payload.payload.selected,
+          },
+        }));
+      }
+    });
+
+    // Listen to presence
+    channel.on("presence", { event: "sync" }, () => {
+      const state = channel.presenceState();
+      const nextParticipants = [];
+      const nextLocks = {};
+
+      for (const [, presences] of Object.entries(state)) {
+        if (!presences || presences.length === 0) continue;
+        // We only care about the most recent presence for a given client
+        const p = presences[0];
+
+        if (p.clientId !== identityRef.current.clientId) {
+          nextParticipants.push({
+            clientId: p.clientId,
+            displayName: p.displayName,
+            color: p.color,
+          });
         }
-      );
 
-      // Listen to awareness (cursors)
-      channel.on("broadcast", { event: "CURSOR" }, (payload) => {
-        if (payload.payload.clientId !== identityRef.current.clientId) {
-          setRemoteCursors((current) => ({
-            ...current,
-            [payload.payload.clientId]: {
-              x: payload.payload.x,
-              y: payload.payload.y,
-              selected: payload.payload.selected,
-            },
-          }));
-        }
-      });
-
-      // Listen to presence
-      channel.on("presence", { event: "sync" }, () => {
-        const state = channel.presenceState();
-        const nextParticipants = [];
-        const nextLocks = {};
-        
-        for (const [, presences] of Object.entries(state)) {
-          if (!presences || presences.length === 0) continue;
-          // We only care about the most recent presence for a given client
-          const p = presences[0];
-          
-          if (p.clientId !== identityRef.current.clientId) {
-            nextParticipants.push({
+        // Aggregate table locks
+        if (Array.isArray(p.lockedTables)) {
+          p.lockedTables.forEach((tableId) => {
+            nextLocks[tableId] = {
+              tableId,
               clientId: p.clientId,
               displayName: p.displayName,
               color: p.color,
-            });
-          }
-
-          // Aggregate table locks
-          if (Array.isArray(p.lockedTables)) {
-            p.lockedTables.forEach((tableId) => {
-              nextLocks[tableId] = {
-                tableId,
-                clientId: p.clientId,
-                displayName: p.displayName,
-                color: p.color,
-                token: 1, // Dummy token
-              };
-            });
-          }
-        }
-        setParticipants(nextParticipants);
-        setTableLocks(nextLocks);
-      });
-
-      // Listen to DB changes for snapshots
-      channel.on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "diagrams", filter: `id=eq.${diagramId}` },
-        (payload) => {
-          const row = payload.new;
-          if (row.version > versionRef.current) {
-            versionRef.current = row.version;
-            sessionRef.current?.onSnapshot?.({
-              name: row.name,
-              document: row.document,
-              version: row.version,
-            });
-          }
-        }
-      );
-
-      channel.subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
-          setConnectionState(CONNECTION_STATE.CONNECTED);
-          channel.track({
-            clientId: identityRef.current.clientId,
-            displayName: identityRef.current.displayName,
-            color: identityRef.current.color,
-            lockedTables: Array.from(heldLocksRef.current),
+              token: 1, // Dummy token
+            };
           });
-        } else if (status === "TIMED_OUT" || status === "CHANNEL_ERROR") {
-          setConnectionState(CONNECTION_STATE.CONNECTING);
-        } else if (status === "CLOSED") {
-          setConnectionState(CONNECTION_STATE.DISCONNECTED);
-          if (sessionRef.current) {
-            window.setTimeout(() => {
-              if (sessionRef.current) {
-                const session = { ...sessionRef.current };
-                sessionRef.current = null;
-                connect({ ...session, version: versionRef.current });
-              }
-            }, 3000);
-          }
         }
-      });
-    },
-    []
-  );
+      }
+      setParticipants(nextParticipants);
+      setTableLocks(nextLocks);
+    });
+
+    // Listen to DB changes for snapshots
+    channel.on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "diagrams",
+        filter: `id=eq.${diagramId}`,
+      },
+      (payload) => {
+        const row = payload.new;
+        if (row.version > versionRef.current) {
+          versionRef.current = row.version;
+          sessionRef.current?.onSnapshot?.({
+            name: row.name,
+            document: row.document,
+            version: row.version,
+          });
+        }
+      },
+    );
+
+    channel.subscribe(async (status) => {
+      if (channelRef.current !== channel) return;
+
+      if (status === "SUBSCRIBED") {
+        setConnectionState(CONNECTION_STATE.CONNECTED);
+        channel.track({
+          clientId: identityRef.current.clientId,
+          displayName: identityRef.current.displayName,
+          color: identityRef.current.color,
+          lockedTables: Array.from(heldLocksRef.current),
+        });
+      } else if (status === "TIMED_OUT" || status === "CHANNEL_ERROR") {
+        setConnectionState(CONNECTION_STATE.CONNECTING);
+      } else if (status === "CLOSED") {
+        setConnectionState(CONNECTION_STATE.DISCONNECTED);
+        if (sessionRef.current) {
+          window.setTimeout(() => {
+            if (sessionRef.current) {
+              const session = { ...sessionRef.current };
+              sessionRef.current = null;
+              connect({ ...session, version: versionRef.current });
+            }
+          }, 3000);
+        }
+      }
+    });
+  }, []);
 
   const disconnect = useCallback(() => {
     sessionRef.current = null;
@@ -237,12 +237,12 @@ export default function CollabContextProvider({ children }) {
     setParticipants([]);
     setRemoteCursors({});
     setTableLocks({});
-    
+
     for (const preview of previewThrottleRef.current.values()) {
       window.clearTimeout(preview.timer);
     }
     previewThrottleRef.current.clear();
-    
+
     heldLocksRef.current.clear();
     retainedLocksRef.current.clear();
   }, []);
@@ -266,7 +266,9 @@ export default function CollabContextProvider({ children }) {
         // Resync required
         versionRef.current = e.diagram.version;
         sessionRef.current?.onSnapshot?.(e.diagram);
-        throw new Error("Version conflict, diagram was updated by someone else.");
+        throw new Error(
+          "Version conflict, diagram was updated by someone else.",
+        );
       }
       throw e;
     }
@@ -276,9 +278,11 @@ export default function CollabContextProvider({ children }) {
     (awareness) => {
       const now = Date.now();
       if (now - cursorSentAtRef.current < 50) return;
-      if (!channelRef.current || connectionState !== CONNECTION_STATE.CONNECTED) return;
-      if (!Number.isFinite(awareness.x) || !Number.isFinite(awareness.y)) return;
-      
+      if (!channelRef.current || connectionState !== CONNECTION_STATE.CONNECTED)
+        return;
+      if (!Number.isFinite(awareness.x) || !Number.isFinite(awareness.y))
+        return;
+
       cursorSentAtRef.current = now;
       channelRef.current.send({
         type: "broadcast",
@@ -291,7 +295,7 @@ export default function CollabContextProvider({ children }) {
         },
       });
     },
-    [connectionState]
+    [connectionState],
   );
 
   const emitDelta = useCallback(
@@ -307,14 +311,18 @@ export default function CollabContextProvider({ children }) {
       if (!Number.isFinite(values?.x) || !Number.isFinite(values?.y)) return;
 
       const sendPreview = (payload) => {
-        if (!channelRef.current || connectionState !== CONNECTION_STATE.CONNECTED) return;
+        if (
+          !channelRef.current ||
+          connectionState !== CONNECTION_STATE.CONNECTED
+        )
+          return;
         channelRef.current.send({
           type: "broadcast",
           event: "OPERATION_PREVIEW",
           payload: {
             clientId: identityRef.current.clientId,
             operation: { type: "table.move", payload },
-          }
+          },
         });
       };
 
@@ -340,7 +348,7 @@ export default function CollabContextProvider({ children }) {
       }
       previewThrottleRef.current.set(id, current);
     },
-    [connectionState]
+    [connectionState],
   );
 
   const acquireTableLock = useCallback(
@@ -351,12 +359,12 @@ export default function CollabContextProvider({ children }) {
       if (lock && lock.clientId !== identityRef.current.clientId) {
         return Promise.resolve(false);
       }
-      
+
       heldLocksRef.current.add(tableId);
       trackPresence();
       return Promise.resolve(true);
     },
-    [tableLocks, trackPresence]
+    [tableLocks, trackPresence],
   );
 
   const acquireTableLocks = useCallback(
@@ -372,12 +380,12 @@ export default function CollabContextProvider({ children }) {
         }
       }
       if (!success) {
-        newlyAcquired.forEach(id => heldLocksRef.current.delete(id));
+        newlyAcquired.forEach((id) => heldLocksRef.current.delete(id));
         if (newlyAcquired.length > 0) trackPresence();
       }
       return success;
     },
-    [acquireTableLock, trackPresence]
+    [acquireTableLock, trackPresence],
   );
 
   const releaseTableLocks = useCallback(
@@ -392,7 +400,7 @@ export default function CollabContextProvider({ children }) {
       }
       if (changed) trackPresence();
     },
-    [trackPresence]
+    [trackPresence],
   );
 
   const retainTableLock = useCallback((tableId) => {
@@ -413,12 +421,12 @@ export default function CollabContextProvider({ children }) {
       const lock = tableLocks[tableId];
       return Boolean(lock && lock.clientId !== identityRef.current.clientId);
     },
-    [tableLocks]
+    [tableLocks],
   );
 
   const hasTableLock = useCallback(
     (tableId) => heldLocksRef.current.has(tableId),
-    []
+    [],
   );
 
   const updateIdentity = useCallback(
@@ -435,7 +443,7 @@ export default function CollabContextProvider({ children }) {
       );
       trackPresence();
     },
-    [trackPresence]
+    [trackPresence],
   );
 
   useEffect(() => disconnect, [disconnect]);
@@ -481,7 +489,7 @@ export default function CollabContextProvider({ children }) {
       sendSnapshot,
       tableLocks,
       updateIdentity,
-    ]
+    ],
   );
   return (
     <CollabContext.Provider value={value}>{children}</CollabContext.Provider>
