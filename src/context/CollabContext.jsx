@@ -177,27 +177,25 @@ export default function CollabContextProvider({ children }) {
       setTableLocks(nextLocks);
     });
 
-    // Listen to DB changes for snapshots
-    channel.on(
-      "postgres_changes",
-      {
-        event: "UPDATE",
-        schema: "public",
-        table: "diagrams",
-        filter: `id=eq.${diagramId}`,
-      },
-      (payload) => {
-        const row = payload.new;
-        if (row.version > versionRef.current) {
-          versionRef.current = row.version;
-          sessionRef.current?.onSnapshot?.({
-            name: row.name,
-            document: row.document,
-            version: row.version,
-          });
+    // Listen to explicit snapshot broadcasts to avoid large postgres_changes payloads
+    channel.on("broadcast", { event: "SNAPSHOT_SAVED" }, async (payload) => {
+      const newVersion = payload.payload.version;
+      if (newVersion > versionRef.current) {
+        try {
+          const row = await diagramApi.get(diagramId);
+          if (row.version > versionRef.current) {
+            versionRef.current = row.version;
+            sessionRef.current?.onSnapshot?.({
+              name: row.name,
+              document: row.document,
+              version: row.version,
+            });
+          }
+        } catch (e) {
+          console.error("Failed to fetch latest snapshot after broadcast:", e);
         }
-      },
-    );
+      }
+    });
 
     channel.subscribe(async (status) => {
       if (channelRef.current !== channel) return;
@@ -272,6 +270,15 @@ export default function CollabContextProvider({ children }) {
         baseVersion: currentVersion,
       });
       versionRef.current = updated.version;
+      
+      if (channelRef.current && connectionState === CONNECTION_STATE.CONNECTED) {
+        channelRef.current.send({
+          type: "broadcast",
+          event: "SNAPSHOT_SAVED",
+          payload: { version: updated.version },
+        });
+      }
+      
       return updated;
     } catch (e) {
       if (e.status === 409) {
@@ -289,7 +296,7 @@ export default function CollabContextProvider({ children }) {
   const emitAwareness = useCallback(
     (awareness) => {
       const now = Date.now();
-      if (now - cursorSentAtRef.current < 50) return;
+      if (now - cursorSentAtRef.current < 150) return;
       if (!channelRef.current || connectionState !== CONNECTION_STATE.CONNECTED)
         return;
       if (!Number.isFinite(awareness.x) || !Number.isFinite(awareness.y))
@@ -345,7 +352,7 @@ export default function CollabContextProvider({ children }) {
         payload: null,
       };
       current.payload = { id, x: values.x, y: values.y };
-      const remaining = 50 - (now - current.lastSent);
+      const remaining = 150 - (now - current.lastSent);
       if (remaining <= 0) {
         window.clearTimeout(current.timer);
         current.timer = null;
