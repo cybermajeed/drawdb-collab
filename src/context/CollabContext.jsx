@@ -204,15 +204,20 @@ export default function CollabContextProvider({ children }) {
 
       if (status === "SUBSCRIBED") {
         setConnectionState(CONNECTION_STATE.CONNECTED);
+        if (sessionRef.current) {
+          sessionRef.current.retryDelay = 1500;
+        }
         channel.track({
           clientId: identityRef.current.clientId,
           displayName: identityRef.current.displayName,
           color: identityRef.current.color,
           lockedTables: Array.from(heldLocksRef.current),
         });
-      } else if (status === "TIMED_OUT" || status === "CHANNEL_ERROR") {
-        setConnectionState(CONNECTION_STATE.CONNECTING);
-      } else if (status === "CLOSED") {
+      } else if (
+        status === "CLOSED" ||
+        status === "CHANNEL_ERROR" ||
+        status === "TIMED_OUT"
+      ) {
         setConnectionState(CONNECTION_STATE.DISCONNECTED);
         if (sessionRef.current) {
           // Exponential backoff: start at 3s, max at 30s
