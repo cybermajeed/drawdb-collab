@@ -152,15 +152,18 @@ export default function CollabContextProvider({ children }) {
         const nextParticipants = [];
         const nextLocks = {};
         
-        for (const [clientId, presences] of Object.entries(state)) {
+        for (const [, presences] of Object.entries(state)) {
           if (!presences || presences.length === 0) continue;
           // We only care about the most recent presence for a given client
           const p = presences[0];
-          nextParticipants.push({
-            clientId: p.clientId,
-            displayName: p.displayName,
-            color: p.color,
-          });
+          
+          if (p.clientId !== identityRef.current.clientId) {
+            nextParticipants.push({
+              clientId: p.clientId,
+              displayName: p.displayName,
+              color: p.color,
+            });
+          }
 
           // Aggregate table locks
           if (Array.isArray(p.lockedTables)) {
@@ -205,8 +208,19 @@ export default function CollabContextProvider({ children }) {
             color: identityRef.current.color,
             lockedTables: Array.from(heldLocksRef.current),
           });
-        } else if (status === "CLOSED" || status === "CHANNEL_ERROR") {
+        } else if (status === "TIMED_OUT" || status === "CHANNEL_ERROR") {
+          setConnectionState(CONNECTION_STATE.CONNECTING);
+        } else if (status === "CLOSED") {
           setConnectionState(CONNECTION_STATE.DISCONNECTED);
+          if (sessionRef.current) {
+            window.setTimeout(() => {
+              if (sessionRef.current) {
+                const session = { ...sessionRef.current };
+                sessionRef.current = null;
+                connect({ ...session, version: versionRef.current });
+              }
+            }, 3000);
+          }
         }
       });
     },

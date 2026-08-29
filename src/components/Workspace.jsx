@@ -4,6 +4,7 @@ import ControlPanel from "./EditorHeader/ControlPanel";
 import { Slot } from "../context/ExtensionsContext";
 import Canvas from "./EditorCanvas/Canvas";
 import CollaborationCursors from "./CollaborationCursors";
+import OnlineStatus from "./OnlineStatus";
 import { CanvasContextProvider } from "../context/CanvasContext";
 import SidePanel from "./EditorSidePanel/SidePanel";
 import { DB, State } from "../data/constants";
@@ -25,7 +26,7 @@ import {
 } from "../hooks";
 import FloatingControls from "./FloatingControls";
 import EditProfileModal from "./EditProfileModal";
-import { Button, Modal, Tag, Tooltip } from "@douyinfe/semi-ui";
+import { Button, Modal, Tag } from "@douyinfe/semi-ui";
 import { IconAlertTriangle } from "@douyinfe/semi-icons";
 import { useTranslation } from "react-i18next";
 import { databases } from "../data/databases";
@@ -51,7 +52,6 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
   const [lastSaved, setLastSaved] = useState("");
   const [showSelectDbModal, setShowSelectDbModal] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
-  const [showImportSource, setShowImportSource] = useState(false);
   const [editProfileVisible, setEditProfileVisible] = useState(false);
   const [selectedDb, setSelectedDb] = useState("");
 
@@ -59,6 +59,8 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
   const loadedIdRef = useRef(null);
   const saveTimerRef = useRef(null);
   const applyingRemoteRef = useRef(false);
+  const isSavingRef = useRef(false);
+  const pendingSaveRef = useRef(false);
   const { layout, setLayout } = useLayout();
   const { settings } = useSettings();
   const { types, setTypes } = useTypes();
@@ -81,9 +83,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
     disconnect,
     sendSnapshot,
     connectionState,
-    participants,
     versionRef,
-    identity,
   } = useCollab();
   const { t, i18n } = useTranslation();
   const { id: routeDiagramId } = useParams();
@@ -93,7 +93,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
   const isDiagram = forcedDiagramId
     ? true
     : Boolean(editorDiagramMatch || directDiagramMatch);
-  const isTemplate = useMatch("/editor/templates/:id");
+  const isTemplate = Boolean(useMatch("/editor/templates/:id"));
 
   const navigate = useNavigateWithParams();
   const handleResize = (e) => {
@@ -157,6 +157,13 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
   );
 
   const save = useCallback(async () => {
+    if (isSavingRef.current) {
+      pendingSaveRef.current = true;
+      return;
+    }
+    isSavingRef.current = true;
+    pendingSaveRef.current = false;
+
     const isNew = isTemplate || !loadedDiagramId || loadedDiagramId === "blank";
     const targetId = isNew
       ? (pendingNewIdRef.current ??= uuidv4())
@@ -187,6 +194,13 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
       if (error.diagram) applyDiagramState(error.diagram, { remote: true });
       console.warn("server autosave failed:", error);
       setSaveState(State.ERROR);
+    } finally {
+      isSavingRef.current = false;
+      if (pendingSaveRef.current) {
+        pendingSaveRef.current = false;
+        // Trigger a new save cycle for queued changes
+        window.setTimeout(() => setSaveState(State.SAVING), 0);
+      }
     }
   }, [
     buildDocument,
@@ -404,68 +418,11 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
             <CollaborationCursors />
           </CanvasContextProvider>
           <Slot name="canvas-overlay" />
-          {isDiagram && loadedDiagramId && (
-            <div className="absolute right-3 top-3 z-40 flex items-center gap-2 rounded-full border border-zinc-200 bg-white/90 px-3 py-1.5 text-xs text-zinc-800 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-100">
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  connectionState === "connected"
-                    ? "bg-emerald-500"
-                    : connectionState === "connecting"
-                      ? "bg-amber-500"
-                      : "bg-red-500"
-                }`}
-              />
-              <span>
-                {t(`collaboration_${connectionState}`, connectionState)}
-              </span>
-              {participants.length > 0 && (
-                <Tooltip
-                  position="bottom"
-                  content={
-                    <div className="flex flex-col gap-2 p-1">
-                      <div className="font-semibold text-xs border-b border-zinc-200 dark:border-zinc-700 pb-1 mb-1">
-                        Online Users
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: identity?.color }}
-                        />
-                        <span>{identity?.displayName} (You)</span>
-                      </div>
-                      {participants.map((p) => (
-                        <div
-                          key={p.clientId}
-                          className="flex items-center gap-2"
-                        >
-                          <div
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: p.color }}
-                          />
-                          <span>{p.displayName}</span>
-                        </div>
-                      ))}
-                    </div>
-                  }
-                >
-                  <span className="text-zinc-600 dark:text-zinc-300 cursor-default underline decoration-dotted underline-offset-2">
-                    {t("collaboration_participants", {
-                      count: participants.length,
-                    })}
-                  </span>
-                </Tooltip>
-              )}
-              {connectionState === "connected" && (
-                <button
-                  onClick={() => setEditProfileVisible(true)}
-                  className="ml-1 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors"
-                  title="Edit Profile"
-                >
-                  <i className="fa-solid fa-pen-to-square"></i>
-                </button>
-              )}
-            </div>
-          )}
+          <OnlineStatus 
+            isDiagram={isDiagram} 
+            loadedDiagramId={loadedDiagramId} 
+            setEditProfileVisible={setEditProfileVisible} 
+          />
           <EditProfileModal
             visible={editProfileVisible}
             onCancel={() => setEditProfileVisible(false)}
