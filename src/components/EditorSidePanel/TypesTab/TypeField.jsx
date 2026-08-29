@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Action, ObjectType } from "../../../data/constants";
 import {
   Row,
@@ -30,6 +30,32 @@ export default function TypeField({ data, tid, fid }) {
   const { setUndoStack, setRedoStack } = useUndoRedo();
   const [editField, setEditField] = useState({});
   const { t } = useTranslation();
+
+  const typeOptions = useMemo(
+    () => [
+      ...Object.keys(dbToTypes[database]).map((value) => ({
+        label: value,
+        value: value,
+      })),
+      ...Object.keys(getCustomTypesForDb(database)).map((value) => ({
+        label: value,
+        value,
+      })),
+      ...types
+        .filter(
+          (type) => type.name.toLowerCase() !== types[tid].name.toLowerCase()
+        )
+        .map((type) => ({
+          label: type.name.toUpperCase(),
+          value: type.name.toUpperCase(),
+        })),
+      ...enums.map((type) => ({
+        label: type.name.toUpperCase(),
+        value: type.name.toUpperCase(),
+      })),
+    ],
+    [database, types, enums, tid]
+  );
 
   return (
     <Row gutter={6} className="hover-1 my-2">
@@ -72,28 +98,7 @@ export default function TypeField({ data, tid, fid }) {
       <Col span={11}>
         <Select
           className="w-full"
-          optionList={[
-            ...Object.keys(dbToTypes[database]).map((value) => ({
-              label: value,
-              value: value,
-            })),
-            ...Object.keys(getCustomTypesForDb(database)).map((value) => ({
-              label: value,
-              value,
-            })),
-            ...types
-              .filter(
-                (type) => type.name.toLowerCase() !== types[tid].name.toLowerCase(),
-              )
-              .map((type) => ({
-                label: type.name.toUpperCase(),
-                value: type.name.toUpperCase(),
-              })),
-            ...enums.map((type) => ({
-              label: type.name.toUpperCase(),
-              value: type.name.toUpperCase(),
-            })),
-          ]}
+          optionList={typeOptions}
           filter
           value={data.type}
           validateStatus={data.type === "" ? "error" : "default"}

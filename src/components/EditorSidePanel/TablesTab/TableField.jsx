@@ -26,6 +26,28 @@ export default function TableField({ data, tid, index, inherited }) {
   const [editField, setEditField] = useState({});
   const table = useMemo(() => tables.find((t) => t.id === tid), [tables, tid]);
 
+  const typeOptions = useMemo(
+    () => [
+      ...Object.keys(dbToTypes[database]).map((value) => ({
+        label: value,
+        value,
+      })),
+      ...Object.keys(getCustomTypesForDb(database)).map((value) => ({
+        label: value,
+        value,
+      })),
+      ...types.map((type) => ({
+        label: type.name.toUpperCase(),
+        value: type.name.toUpperCase(),
+      })),
+      ...enums.map((type) => ({
+        label: type.name.toUpperCase(),
+        value: type.name.toUpperCase(),
+      })),
+    ],
+    [database, types, enums]
+  );
+
   return (
     <div className="hover-1 my-2 flex gap-2 items-center">
       <DragHandle readOnly={layout.readOnly} id={data.id} />
@@ -67,24 +89,7 @@ export default function TableField({ data, tid, index, inherited }) {
       <div className="min-w-24 flex-1/3">
         <Select
           className="w-full"
-          optionList={[
-            ...Object.keys(dbToTypes[database]).map((value) => ({
-              label: value,
-              value,
-            })),
-            ...Object.keys(getCustomTypesForDb(database)).map((value) => ({
-              label: value,
-              value,
-            })),
-            ...types.map((type) => ({
-              label: type.name.toUpperCase(),
-              value: type.name.toUpperCase(),
-            })),
-            ...enums.map((type) => ({
-              label: type.name.toUpperCase(),
-              value: type.name.toUpperCase(),
-            })),
-          ]}
+          optionList={typeOptions}
           filter
           value={data.type}
           validateStatus={data.type === "" ? "error" : "default"}
