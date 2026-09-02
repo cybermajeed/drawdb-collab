@@ -119,16 +119,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
       ...(databases[database].hasEnums && { enums }),
       ...(databases[database].hasTypes && { types }),
     }),
-    [
-      database,
-      tables,
-      relationships,
-      notes,
-      areas,
-      transform,
-      enums,
-      types,
-    ],
+    [database, tables, relationships, notes, areas, transform, enums, types],
   );
 
   const applyDiagramState = useCallback(
@@ -396,6 +387,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
     types?.length,
     chatMessages?.length,
     relationships?.length,
+    transform.zoom,
     title,
     gistId,
     setSaveState,
