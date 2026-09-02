@@ -847,6 +847,50 @@ export default function ControlPanel({
   const open = () => setModal(MODAL.OPEN);
   const saveDiagramAs = () => setModal(MODAL.SAVEAS);
 
+  const exportAsJSON = () => {
+    openExportModal(MODAL.CODE);
+    const result = JSON.stringify(
+      {
+        tables,
+        relationships,
+        notes,
+        subjectAreas: areas,
+        database,
+        ...(databases[database].hasTypes && { types }),
+        ...(databases[database].hasEnums && { enums }),
+        title,
+      },
+      null,
+      2
+    );
+    setExportData((prev) => ({
+      ...prev,
+      data: result,
+      extension: "json",
+    }));
+  };
+
+  const exportAsSQL = () => {
+    if (database === DB.GENERIC) return;
+    openExportModal(MODAL.CODE);
+    const src = exportSQL({
+      tables,
+      references: relationships,
+      types,
+      database,
+      enums,
+    });
+    setExportData((prev) => ({
+      ...prev,
+      data: src,
+      extension: "sql",
+    }));
+  };
+
+  const toggleChat = () => {
+    setLayout((prev) => ({ ...prev, chat: !prev.chat }));
+  };
+
   const saveAsCopy = async (newTitle) => {
     const newId = uuidv4();
     const diagramData = {
@@ -1702,8 +1746,14 @@ export default function ControlPanel({
   useHotkeys("mod+shift+f", viewFieldSummary, {
     preventDefault: true,
   });
-  useHotkeys("mod+shift+s", saveDiagramAs, {
+  useHotkeys("mod+shift+s", exportAsSQL, {
     preventDefault: true,
+  });
+  useHotkeys("mod+shift+j", exportAsJSON, {
+    preventDefault: true,
+  });
+  useHotkeys("alt+c", toggleChat, { 
+    preventDefault: true 
   });
   useHotkeys("mod+alt+c", copyAsImage, { preventDefault: true });
   useHotkeys("enter", resetView, { preventDefault: true });

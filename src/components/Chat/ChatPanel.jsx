@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Button, Input, Avatar, Tooltip } from "@douyinfe/semi-ui";
+import { Button, Input, Avatar, Tooltip, Image } from "@douyinfe/semi-ui";
 import { IconSend, IconClose, IconImage } from "@douyinfe/semi-icons";
 import { useCollab, useLayout, useSettings } from "../../hooks";
 
@@ -14,7 +14,7 @@ export default function ChatPanel() {
 
   const handleImageSelect = (e) => {
     const file = e.target.files[0];
-    if (file && file.type.startsWith('image/')) {
+    if (file && file.type.startsWith("image/")) {
       const reader = new FileReader();
       reader.onload = (e) => {
         setSelectedImage(e.target.result);
@@ -23,6 +23,27 @@ export default function ChatPanel() {
     }
     // reset input so the same file can be selected again
     e.target.value = null;
+  };
+
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.indexOf("image") !== -1) {
+        const file = item.getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            setSelectedImage(ev.target.result);
+          };
+          reader.readAsDataURL(file);
+          e.preventDefault();
+          break;
+        }
+      }
+    }
   };
 
   const handleSend = () => {
@@ -60,10 +81,7 @@ export default function ChatPanel() {
         />
       </div>
 
-      <div
-        className="flex-1 overflow-y-auto p-4 space-y-4"
-        ref={scrollRef}
-      >
+      <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={scrollRef}>
         {chatMessages?.length === 0 ? (
           <div className="text-center text-gray-500 text-sm mt-10">
             No messages yet. Start the conversation!
@@ -99,15 +117,24 @@ export default function ChatPanel() {
                   }`}
                 >
                   {isSelf && (
-                    <div className="text-xs opacity-70 mb-1 text-right">You</div>
+                    <div className="text-xs opacity-70 mb-1 text-right">
+                      You
+                    </div>
                   )}
                   {!isSelf && (
-                    <div className="text-xs opacity-70 mb-1" style={{ color: msg.color }}>
+                    <div
+                      className="text-xs opacity-70 mb-1"
+                      style={{ color: msg.color }}
+                    >
                       {msg.displayName}
                     </div>
                   )}
                   {msg.image && (
-                    <img src={msg.image} alt="Attachment" className="max-w-full rounded-md mb-2 border border-black/10 dark:border-white/10" />
+                    <Image 
+                      src={msg.image} 
+                      alt="Attachment" 
+                      className="max-w-full rounded-md mb-2 border border-black/10 dark:border-white/10 cursor-pointer hover:opacity-90 transition-opacity" 
+                    />
                   )}
                   {msg.text && <div>{msg.text}</div>}
                 </div>
@@ -120,7 +147,11 @@ export default function ChatPanel() {
       {selectedImage && (
         <div className="px-3 pt-3 pb-1 border-t border-color relative bg-black/5 dark:bg-white/5">
           <div className="relative inline-block">
-            <img src={selectedImage} alt="Preview" className="h-20 rounded-md border border-black/20 dark:border-white/20 object-cover" />
+            <img
+              src={selectedImage}
+              alt="Preview"
+              className="h-20 rounded-md border border-black/20 dark:border-white/20 object-cover"
+            />
             <button
               onClick={() => setSelectedImage(null)}
               className="absolute -top-2 -right-2 bg-zinc-800 text-white rounded-full p-1 shadow-md hover:bg-zinc-700 transition-colors"
@@ -132,8 +163,8 @@ export default function ChatPanel() {
       )}
 
       <div className="p-3 border-t border-color flex gap-2 items-end">
-        <input 
-          type="file" 
+        <input
+          type="file"
           accept="image/*"
           ref={fileInputRef}
           onChange={handleImageSelect}
@@ -149,6 +180,7 @@ export default function ChatPanel() {
           value={inputValue}
           onChange={(v) => setInputValue(v)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           className="flex-1"
         />
         <Button

@@ -396,7 +396,6 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
     types?.length,
     chatMessages?.length,
     relationships?.length,
-    transform.zoom,
     title,
     gistId,
     setSaveState,
