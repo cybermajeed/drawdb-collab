@@ -23,10 +23,10 @@ export const diagramApi = {
     }
     return data;
   },
-  async create({ id, name, document }) {
+  async create({ id, name, document, chat = [] }) {
     const { data, error } = await supabase
       .from("diagrams")
-      .insert({ id, name, document })
+      .insert({ id, name, document, chat })
       .select()
       .single();
     if (error) {
@@ -37,13 +37,14 @@ export const diagramApi = {
     }
     return data;
   },
-  async update(id, { name, document, baseVersion }) {
+  async update(id, { name, document, chat = [], baseVersion }) {
     // Optimistic concurrency control
     const { data, error } = await supabase
       .from("diagrams")
       .update({
         name,
         document,
+        chat,
         version: baseVersion + 1,
         updated_at: new Date().toISOString(),
       })

@@ -298,7 +298,7 @@ export default function CollabContextProvider({ children }) {
     retainedLocksRef.current.clear();
   }, []);
 
-  const sendSnapshot = useCallback(async (name, document) => {
+  const sendSnapshot = useCallback(async (name, document, chat) => {
     const session = sessionRef.current;
     if (!session) {
       throw new Error("Collaboration connection is unavailable");
@@ -308,6 +308,7 @@ export default function CollabContextProvider({ children }) {
       const updated = await diagramApi.update(session.diagramId, {
         name,
         document,
+        chat,
         baseVersion: currentVersion,
       });
       versionRef.current = updated.version;
@@ -415,12 +416,13 @@ export default function CollabContextProvider({ children }) {
   );
 
   const sendChatMessage = useCallback(
-    (text) => {
+    (text, image = null) => {
       if (!channelRef.current || connectionState !== CONNECTION_STATE.CONNECTED)
         return;
       const message = {
         id: nanoid(),
         text,
+        image,
         clientId: identityRef.current.clientId,
         displayName: identityRef.current.displayName,
         color: identityRef.current.color,

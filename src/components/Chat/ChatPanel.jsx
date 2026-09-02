@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Button, Input, Avatar, Tooltip } from "@douyinfe/semi-ui";
-import { IconSend, IconClose } from "@douyinfe/semi-icons";
+import { IconSend, IconClose, IconImage } from "@douyinfe/semi-icons";
 import { useCollab, useLayout, useSettings } from "../../hooks";
 
 export default function ChatPanel() {
@@ -8,12 +8,28 @@ export default function ChatPanel() {
   const { setLayout } = useLayout();
   const { settings } = useSettings();
   const [inputValue, setInputValue] = useState("");
+  const [selectedImage, setSelectedImage] = useState(null);
+  const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
 
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setSelectedImage(e.target.result);
+      };
+      reader.readAsDataURL(file);
+    }
+    // reset input so the same file can be selected again
+    e.target.value = null;
+  };
+
   const handleSend = () => {
-    if (inputValue.trim()) {
-      sendChatMessage(inputValue.trim());
+    if (inputValue.trim() || selectedImage) {
+      sendChatMessage(inputValue.trim(), selectedImage);
       setInputValue("");
+      setSelectedImage(null);
     }
   };
 
@@ -90,7 +106,10 @@ export default function ChatPanel() {
                       {msg.displayName}
                     </div>
                   )}
-                  <div>{msg.text}</div>
+                  {msg.image && (
+                    <img src={msg.image} alt="Attachment" className="max-w-full rounded-md mb-2 border border-black/10 dark:border-white/10" />
+                  )}
+                  {msg.text && <div>{msg.text}</div>}
                 </div>
               </div>
             );
@@ -98,7 +117,33 @@ export default function ChatPanel() {
         )}
       </div>
 
-      <div className="p-3 border-t border-color flex gap-2">
+      {selectedImage && (
+        <div className="px-3 pt-3 pb-1 border-t border-color relative bg-black/5 dark:bg-white/5">
+          <div className="relative inline-block">
+            <img src={selectedImage} alt="Preview" className="h-20 rounded-md border border-black/20 dark:border-white/20 object-cover" />
+            <button
+              onClick={() => setSelectedImage(null)}
+              className="absolute -top-2 -right-2 bg-zinc-800 text-white rounded-full p-1 shadow-md hover:bg-zinc-700 transition-colors"
+            >
+              <IconClose size="small" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="p-3 border-t border-color flex gap-2 items-end">
+        <input 
+          type="file" 
+          accept="image/*"
+          ref={fileInputRef}
+          onChange={handleImageSelect}
+          style={{ display: "none" }}
+        />
+        <Button
+          type="tertiary"
+          icon={<IconImage />}
+          onClick={() => fileInputRef.current?.click()}
+        />
         <Input
           placeholder="Type a message..."
           value={inputValue}
@@ -111,7 +156,7 @@ export default function ChatPanel() {
           type="primary"
           icon={<IconSend />}
           onClick={handleSend}
-          disabled={!inputValue.trim()}
+          disabled={!inputValue.trim() && !selectedImage}
         />
       </div>
     </div>

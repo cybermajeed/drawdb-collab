@@ -116,7 +116,6 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
       areas,
       pan: transform.pan,
       zoom: transform.zoom,
-      chatMessages,
       ...(databases[database].hasEnums && { enums }),
       ...(databases[database].hasTypes && { types }),
     }),
@@ -129,7 +128,6 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
       transform,
       enums,
       types,
-      chatMessages,
     ],
   );
 
@@ -144,7 +142,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
       setRelationships(diagram.references ?? diagram.relationships ?? []);
       setAreas(diagram.areas ?? diagram.subjectAreas ?? []);
       setNotes(diagram.notes ?? []);
-      setChatMessages(diagram.chatMessages ?? []);
+      setChatMessages(serverDiagram.chat ?? diagram.chatMessages ?? []);
       if (!remote) {
         setTransform({
           pan: diagram.pan ?? { x: 0, y: 0 },
@@ -188,6 +186,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
         id: targetId,
         name: currentTitle,
         document: currentDoc,
+        chat: chatMessages,
         updatedAt: Date.now(),
       });
       setSaveState(State.SAVED);
@@ -211,16 +210,18 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
             id: targetId,
             name: currentTitle,
             document: currentDoc,
+            chat: chatMessages,
           });
           versionRef.current = created.version;
           pendingNewIdRef.current = null;
           navigate(`/diagrams/${targetId}`, { replace: true });
         } else if (connectionState === "connected") {
-          await sendSnapshot(currentTitle, currentDoc);
+          await sendSnapshot(currentTitle, currentDoc, chatMessages);
         } else {
           const updated = await diagramApi.update(targetId, {
             name: currentTitle,
             document: currentDoc,
+            chat: chatMessages,
             baseVersion: versionRef.current,
           });
           versionRef.current = updated.version;
@@ -249,6 +250,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
     sendSnapshot,
     versionRef,
     applyDiagramState,
+    chatMessages,
   ]);
 
   const load = useCallback(async () => {
