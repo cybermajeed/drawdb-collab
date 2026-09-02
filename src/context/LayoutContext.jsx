@@ -11,6 +11,7 @@ const defaultLayout = {
   toolbar: true,
   dbmlEditor: false,
   readOnly: false,
+  chat: false,
 };
 
 export default function LayoutContextProvider({ children }) {
@@ -31,6 +32,7 @@ export default function LayoutContextProvider({ children }) {
     toolbar: queryConfig.hideToolbar.isActive(hideToolbarParam)
       ? false
       : defaultLayout.toolbar,
+    chat: defaultLayout.chat,
   });
 
   const effectiveLayout = {
@@ -44,6 +46,7 @@ export default function LayoutContextProvider({ children }) {
     toolbar: queryConfig.hideToolbar.isForced(hideToolbarParam)
       ? false
       : layout.toolbar,
+    chat: layout.chat,
   };
 
   return (

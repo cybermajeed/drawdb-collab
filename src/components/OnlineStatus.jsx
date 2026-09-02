@@ -9,7 +9,7 @@ export default function OnlineStatus({ isDiagram, loadedDiagramId, setEditProfil
   if (!isDiagram || !loadedDiagramId) return null;
 
   return (
-    <div className="absolute right-3 top-3 z-40 flex items-center gap-2.5 rounded-full border border-zinc-200/80 bg-white/70 px-3.5 py-1.5 text-xs font-medium text-zinc-800 shadow-sm backdrop-blur-md transition-all duration-300 dark:border-zinc-700/80 dark:bg-zinc-900/70 dark:text-zinc-100">
+    <div className="z-40 flex items-center gap-2.5 rounded-full border border-zinc-200/80 bg-white/70 px-3.5 py-1.5 text-xs font-medium text-zinc-800 shadow-sm backdrop-blur-md transition-all duration-300 dark:border-zinc-700/80 dark:bg-zinc-900/70 dark:text-zinc-100">
       <div className="relative flex h-2.5 w-2.5 items-center justify-center">
         {connectionState === "connecting" && (
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"></span>

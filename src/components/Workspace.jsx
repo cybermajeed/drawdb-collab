@@ -26,6 +26,7 @@ import {
 } from "../hooks";
 import FloatingControls from "./FloatingControls";
 import EditProfileModal from "./EditProfileModal";
+import ChatPanel from "./Chat/ChatPanel";
 import { Button, Modal, Tag } from "@douyinfe/semi-ui";
 import { IconAlertTriangle } from "@douyinfe/semi-icons";
 import { useTranslation } from "react-i18next";
@@ -84,6 +85,10 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
     sendSnapshot,
     connectionState,
     versionRef,
+    chatMessages,
+    setChatMessages,
+    unreadCount,
+    setUnreadCount,
   } = useCollab();
   const { t, i18n } = useTranslation();
   const { id: routeDiagramId } = useParams();
@@ -111,10 +116,21 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
       areas,
       pan: transform.pan,
       zoom: transform.zoom,
+      chatMessages,
       ...(databases[database].hasEnums && { enums }),
       ...(databases[database].hasTypes && { types }),
     }),
-    [database, tables, relationships, notes, areas, transform, enums, types],
+    [
+      database,
+      tables,
+      relationships,
+      notes,
+      areas,
+      transform,
+      enums,
+      types,
+      chatMessages,
+    ],
   );
 
   const applyDiagramState = useCallback(
@@ -128,6 +144,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
       setRelationships(diagram.references ?? diagram.relationships ?? []);
       setAreas(diagram.areas ?? diagram.subjectAreas ?? []);
       setNotes(diagram.notes ?? []);
+      setChatMessages(diagram.chatMessages ?? []);
       if (!remote) {
         setTransform({
           pan: diagram.pan ?? { x: 0, y: 0 },
@@ -153,6 +170,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
       setTypes,
       setUndoStack,
       versionRef,
+      setChatMessages,
     ],
   );
 
@@ -182,7 +200,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
       pendingSaveRef.current = true;
       return;
     }
-    
+
     isSavingRef.current = true;
     pendingSaveRef.current = false;
 
@@ -358,7 +376,8 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
       tables?.length === 0 &&
       areas?.length === 0 &&
       notes?.length === 0 &&
-      types?.length === 0
+      types?.length === 0 &&
+      chatMessages?.length === 0
     )
       return;
 
@@ -373,6 +392,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
     areas?.length,
     notes?.length,
     types?.length,
+    chatMessages?.length,
     relationships?.length,
     transform.zoom,
     title,
@@ -401,6 +421,12 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
 
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (layout.chat) {
+      setUnreadCount(0);
+    }
+  }, [layout.chat, setUnreadCount]);
 
   return (
     <div className="h-full flex flex-col overflow-hidden theme">
@@ -436,11 +462,36 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
             <CollaborationCursors />
           </CanvasContextProvider>
           <Slot name="canvas-overlay" />
-          <OnlineStatus 
-            isDiagram={isDiagram} 
-            loadedDiagramId={loadedDiagramId} 
-            setEditProfileVisible={setEditProfileVisible} 
-          />
+
+          <div className="absolute right-3 top-3 z-40 flex items-center gap-3">
+            {isDiagram && loadedDiagramId && (
+              <button
+                onClick={() =>
+                  setLayout((prev) => ({ ...prev, chat: !prev.chat }))
+                }
+                className={`relative flex items-center gap-2 rounded-full border border-zinc-200/80 px-4 py-1.5 text-sm font-medium shadow-sm backdrop-blur-md transition-all duration-300 dark:border-zinc-700/80 ${
+                  layout.chat
+                    ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
+                    : "bg-white/70 text-zinc-800 hover:bg-white dark:bg-zinc-900/70 dark:text-zinc-100 dark:hover:bg-zinc-900"
+                }`}
+              >
+                <i className="fa-regular fa-message"></i>
+                <span>Chat</span>
+                {!layout.chat && unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-md">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </button>
+            )}
+
+            <OnlineStatus
+              isDiagram={isDiagram}
+              loadedDiagramId={loadedDiagramId}
+              setEditProfileVisible={setEditProfileVisible}
+            />
+          </div>
+
           <EditProfileModal
             visible={editProfileVisible}
             onCancel={() => setEditProfileVisible(false)}
@@ -474,6 +525,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
             </div>
           )}
         </div>
+        {layout.chat && <ChatPanel />}
         <Slot name="right-panel" />
       </div>
       <Modal

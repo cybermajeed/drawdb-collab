@@ -51,6 +51,7 @@ export default function LayoutDropdown() {
           >
             {t("issues")}
           </Dropdown.Item>
+
           <Dropdown.Divider />
           <Dropdown.Item
             icon={fullscreen ? <IconCheckboxTick /> : <div className="px-2" />}

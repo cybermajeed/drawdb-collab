@@ -24,6 +24,36 @@ export const COLORS = [
   "#0891b2", // cyan
 ];
 
+const playNotificationSound = () => {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    const playTone = (freq, startTime, duration) => {
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(freq, startTime);
+
+      gainNode.gain.setValueAtTime(0, startTime);
+      gainNode.gain.linearRampToValueAtTime(0.2, startTime + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscillator.start(startTime);
+      oscillator.stop(startTime + duration);
+    };
+
+    // Play a short, soft, double-blip (like modern chat apps)
+    playTone(659.25, audioCtx.currentTime, 0.1); // E5 note
+    playTone(880, audioCtx.currentTime + 0.1, 0.15); // A5 note
+  } catch (e) {
+    console.error("Audio playback failed", e);
+  }
+};
+
 function getIdentity() {
   const stored = localStorage.getItem("drawdb-collaboration-identity");
   if (stored) {
@@ -76,6 +106,8 @@ export default function CollabContextProvider({ children }) {
   const [participants, setParticipants] = useState([]);
   const [remoteCursors, setRemoteCursors] = useState({});
   const [tableLocks, setTableLocks] = useState({});
+  const [chatMessages, setChatMessages] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const trackPresence = useCallback(() => {
     if (channelRef.current && connectionState === CONNECTION_STATE.CONNECTED) {
@@ -106,6 +138,7 @@ export default function CollabContextProvider({ children }) {
     setRemoteCursors({});
     setTableLocks({});
     setParticipants([]);
+    setUnreadCount(0);
     heldLocksRef.current.clear();
     retainedLocksRef.current.clear();
 
@@ -139,6 +172,13 @@ export default function CollabContextProvider({ children }) {
           },
         }));
       }
+    });
+
+    // Listen to chat messages
+    channel.on("broadcast", { event: "CHAT_MESSAGE" }, (payload) => {
+      setChatMessages((current) => [...current, payload.payload.message]);
+      setUnreadCount((prev) => prev + 1);
+      playNotificationSound();
     });
 
     // Listen to presence
@@ -247,6 +287,7 @@ export default function CollabContextProvider({ children }) {
     setParticipants([]);
     setRemoteCursors({});
     setTableLocks({});
+    setChatMessages([]);
 
     for (const preview of previewThrottleRef.current.values()) {
       window.clearTimeout(preview.timer);
@@ -270,15 +311,18 @@ export default function CollabContextProvider({ children }) {
         baseVersion: currentVersion,
       });
       versionRef.current = updated.version;
-      
-      if (channelRef.current && connectionState === CONNECTION_STATE.CONNECTED) {
+
+      if (
+        channelRef.current &&
+        connectionState === CONNECTION_STATE.CONNECTED
+      ) {
         channelRef.current.send({
           type: "broadcast",
           event: "SNAPSHOT_SAVED",
           payload: { version: updated.version },
         });
       }
-      
+
       return updated;
     } catch (e) {
       if (e.status === 409) {
@@ -366,6 +410,28 @@ export default function CollabContextProvider({ children }) {
         }, remaining);
       }
       previewThrottleRef.current.set(id, current);
+    },
+    [connectionState],
+  );
+
+  const sendChatMessage = useCallback(
+    (text) => {
+      if (!channelRef.current || connectionState !== CONNECTION_STATE.CONNECTED)
+        return;
+      const message = {
+        id: nanoid(),
+        text,
+        clientId: identityRef.current.clientId,
+        displayName: identityRef.current.displayName,
+        color: identityRef.current.color,
+        timestamp: Date.now(),
+      };
+      setChatMessages((current) => [...current, message]);
+      channelRef.current.send({
+        type: "broadcast",
+        event: "CHAT_MESSAGE",
+        payload: { message },
+      });
     },
     [connectionState],
   );
@@ -489,6 +555,11 @@ export default function CollabContextProvider({ children }) {
       isTableLockedByOther,
       hasTableLock,
       isApplyingRemoteRef,
+      chatMessages,
+      sendChatMessage,
+      setChatMessages,
+      unreadCount,
+      setUnreadCount,
     }),
     [
       connect,
@@ -508,6 +579,11 @@ export default function CollabContextProvider({ children }) {
       sendSnapshot,
       tableLocks,
       updateIdentity,
+      chatMessages,
+      sendChatMessage,
+      setChatMessages,
+      unreadCount,
+      setUnreadCount,
     ],
   );
   return (
