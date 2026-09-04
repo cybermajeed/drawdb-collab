@@ -34,8 +34,9 @@ export default function CollaborationCursors() {
     return (
       <div
         key={clientId}
-        className="pointer-events-none absolute z-50 transition-all duration-150 ease-linear"
+        className="pointer-events-none absolute z-50 transition-all ease-linear"
         style={{
+          transitionDuration: '250ms',
           left: screenPosition.x,
           top: screenPosition.y,
           color: participant.color,
