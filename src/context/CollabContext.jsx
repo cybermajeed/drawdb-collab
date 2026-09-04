@@ -346,7 +346,7 @@ export default function CollabContextProvider({ children }) {
   const emitAwareness = useCallback(
     (awareness) => {
       const now = Date.now();
-      if (now - cursorSentAtRef.current < 50) return;
+      if (now - cursorSentAtRef.current < 150) return;
       if (!channelRef.current || connectionStateRef.current !== CONNECTION_STATE.CONNECTED)
         return;
       if (!Number.isFinite(awareness.x) || !Number.isFinite(awareness.y))
@@ -402,7 +402,7 @@ export default function CollabContextProvider({ children }) {
         payload: null,
       };
       current.payload = { id, x: values.x, y: values.y };
-      const remaining = 50 - (now - current.lastSent);
+      const remaining = 150 - (now - current.lastSent);
       if (remaining <= 0) {
         window.clearTimeout(current.timer);
         current.timer = null;
