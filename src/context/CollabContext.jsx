@@ -110,7 +110,12 @@ export default function CollabContextProvider({ children }) {
   }, []);
   const [participants, setParticipants] = useState([]);
   const [remoteCursors, setRemoteCursors] = useState({});
-  const [tableLocks, setTableLocks] = useState({});
+  const [tableLocks, setTableLocksRaw] = useState({});
+  const tableLocksRef = useRef({});
+  const setTableLocks = useCallback((locks) => {
+    tableLocksRef.current = locks;
+    setTableLocksRaw(locks);
+  }, []);
   const [chatMessages, setChatMessages] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -447,7 +452,7 @@ export default function CollabContextProvider({ children }) {
     (tableId) => {
       if (heldLocksRef.current.has(tableId)) return Promise.resolve(true);
       // Wait for tableLocks state
-      const lock = tableLocks[tableId];
+      const lock = tableLocksRef.current[tableId];
       if (lock && lock.clientId !== identityRef.current.clientId) {
         return Promise.resolve(false);
       }
@@ -456,7 +461,7 @@ export default function CollabContextProvider({ children }) {
       trackPresence();
       return Promise.resolve(true);
     },
-    [tableLocks, trackPresence],
+    [trackPresence],
   );
 
   const acquireTableLocks = useCallback(
