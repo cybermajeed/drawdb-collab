@@ -100,9 +100,14 @@ export default function CollabContextProvider({ children }) {
   const heldLocksRef = useRef(new Set());
   const retainedLocksRef = useRef(new Map());
 
-  const [connectionState, setConnectionState] = useState(
+  const [connectionState, setConnectionStateRaw] = useState(
     CONNECTION_STATE.DISCONNECTED,
   );
+  const connectionStateRef = useRef(CONNECTION_STATE.DISCONNECTED);
+  const setConnectionState = useCallback((state) => {
+    connectionStateRef.current = state;
+    setConnectionStateRaw(state);
+  }, []);
   const [participants, setParticipants] = useState([]);
   const [remoteCursors, setRemoteCursors] = useState({});
   const [tableLocks, setTableLocks] = useState({});
@@ -110,7 +115,7 @@ export default function CollabContextProvider({ children }) {
   const [unreadCount, setUnreadCount] = useState(0);
 
   const trackPresence = useCallback(() => {
-    if (channelRef.current && connectionState === CONNECTION_STATE.CONNECTED) {
+    if (channelRef.current && connectionStateRef.current === CONNECTION_STATE.CONNECTED) {
       channelRef.current.track({
         clientId: identityRef.current.clientId,
         displayName: identityRef.current.displayName,
@@ -118,7 +123,7 @@ export default function CollabContextProvider({ children }) {
         lockedTables: Array.from(heldLocksRef.current),
       });
     }
-  }, [connectionState]);
+  }, []);
 
   const connect = useCallback(({ diagramId, version, onSnapshot, onDelta }) => {
     if (sessionRef.current?.diagramId === diagramId) {
@@ -315,7 +320,7 @@ export default function CollabContextProvider({ children }) {
 
       if (
         channelRef.current &&
-        connectionState === CONNECTION_STATE.CONNECTED
+        connectionStateRef.current === CONNECTION_STATE.CONNECTED
       ) {
         channelRef.current.send({
           type: "broadcast",
@@ -342,7 +347,7 @@ export default function CollabContextProvider({ children }) {
     (awareness) => {
       const now = Date.now();
       if (now - cursorSentAtRef.current < 150) return;
-      if (!channelRef.current || connectionState !== CONNECTION_STATE.CONNECTED)
+      if (!channelRef.current || connectionStateRef.current !== CONNECTION_STATE.CONNECTED)
         return;
       if (!Number.isFinite(awareness.x) || !Number.isFinite(awareness.y))
         return;
@@ -359,7 +364,7 @@ export default function CollabContextProvider({ children }) {
         },
       });
     },
-    [connectionState],
+    [],
   );
 
   const emitDelta = useCallback(
@@ -377,7 +382,7 @@ export default function CollabContextProvider({ children }) {
       const sendPreview = (payload) => {
         if (
           !channelRef.current ||
-          connectionState !== CONNECTION_STATE.CONNECTED
+          connectionStateRef.current !== CONNECTION_STATE.CONNECTED
         )
           return;
         channelRef.current.send({
@@ -412,12 +417,12 @@ export default function CollabContextProvider({ children }) {
       }
       previewThrottleRef.current.set(id, current);
     },
-    [connectionState],
+    [],
   );
 
   const sendChatMessage = useCallback(
     (text, image = null) => {
-      if (!channelRef.current || connectionState !== CONNECTION_STATE.CONNECTED)
+      if (!channelRef.current || connectionStateRef.current !== CONNECTION_STATE.CONNECTED)
         return;
       const message = {
         id: nanoid(),
@@ -435,7 +440,7 @@ export default function CollabContextProvider({ children }) {
         payload: { message },
       });
     },
-    [connectionState],
+    [],
   );
 
   const acquireTableLock = useCallback(
