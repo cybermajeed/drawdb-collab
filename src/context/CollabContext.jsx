@@ -239,6 +239,7 @@ export default function CollabContextProvider({ children }) {
               name: row.name,
               document: row.document,
               version: row.version,
+              chat: row.chat,
             });
           }
         } catch (e) {
