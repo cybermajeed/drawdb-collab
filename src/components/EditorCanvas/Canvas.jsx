@@ -518,6 +518,15 @@ export default function Canvas() {
           dragLockIdsRef.current = tableIds;
         }
         handlePointerDownOnElement(e, pointerDownElement);
+      } else {
+        if (!e.ctrlKey && !e.metaKey) {
+          setSelectedElement({
+            id: -1,
+            element: ObjectType.NONE,
+            open: false,
+          });
+          setBulkSelectedElements([]);
+        }
       }
       pointer.setStyle("crosshair");
     } else if (isMouseMiddleButton || isMouseRightButton) {
