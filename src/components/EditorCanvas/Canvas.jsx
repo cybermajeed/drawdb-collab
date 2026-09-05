@@ -515,6 +515,12 @@ export default function Canvas() {
             releaseTableLocks(tableIds);
             return;
           }
+          // Release any previously held drag locks before taking new ones
+          if (dragLockIdsRef.current.length > 0) {
+            const previousIds = dragLockIdsRef.current;
+            dragLockIdsRef.current = [];
+            releaseTableLocks(previousIds);
+          }
           dragLockIdsRef.current = tableIds;
         }
         handlePointerDownOnElement(e, pointerDownElement);
@@ -569,6 +575,20 @@ export default function Canvas() {
       transform.pan.x === panning.panStart.x &&
       transform.pan.y === panning.panStart.y
     );
+
+  useEffect(() => {
+    const handleGlobalPointerUp = (e) => {
+      if (!e.isPrimary) return;
+      pointerDownActiveRef.current = false;
+      if (dragLockIdsRef.current.length > 0) {
+        const tableIds = dragLockIdsRef.current;
+        dragLockIdsRef.current = [];
+        window.setTimeout(() => releaseTableLocks(tableIds), 2_000);
+      }
+    };
+    window.addEventListener("pointerup", handleGlobalPointerUp);
+    return () => window.removeEventListener("pointerup", handleGlobalPointerUp);
+  }, [releaseTableLocks]);
 
   /**
    * @param {PointerEvent} e
